@@ -1,16 +1,18 @@
 // =============================================================
 //  Portfolio Gallery — Three.js
-//  Single-file scene logic. No build step required.
+//  Loads a Blender-exported room (assets/room.glb) and attaches
+//  artworks to named empties inside it.
 //
 //  HOW THIS IS ORGANIZED
 //   1. Loading manager + UI hooks
 //   2. Renderer / scene / camera / lights
-//   3. Placeholder room (replace with your Blender .glb later)
-//   4. Artworks (images, videos, 3D objects)
+//   3. Room loader (assets/room.glb)
+//   4. Artworks (attached to named empties from the .glb)
 //   5. Desktop controls (PointerLock + WASD + raycast collisions)
 //   6. Mobile controls (virtual joystick + drag-to-look)
 //   7. Interaction (raycast → "Press E to view" → modal)
-//   8. Animation loop + resize
+//   8. Resume overlay + start menu
+//   9. Animation loop + resize
 // =============================================================
 
 import * as THREE from 'three';
@@ -21,9 +23,6 @@ import { DRACOLoader }         from 'three/addons/loaders/DRACOLoader.js';
 // =============================================================
 // 1. LOADING MANAGER
 // =============================================================
-// Every loader (textures, models, etc.) we wire into this manager
-// reports back to a single progress bar. Once everything is done,
-// we enable the Start button.
 const manager = new THREE.LoadingManager();
 const progressBar  = document.getElementById('progress-bar');
 const progressText = document.getElementById('progress-text');
@@ -77,81 +76,110 @@ sun.shadow.camera.bottom = -10;
 scene.add(sun);
 
 // =============================================================
-// 3. PLACEHOLDER ROOM
+// 3. ROOM LOADER
 // =============================================================
-// REPLACE THIS BLOCK WITH YOUR BLENDER MODEL when you're ready.
-// See the README for the swap-in steps. For now we build a
-// simple boxy white-cube gallery so you can see everything work.
-const collidables = []; // anything the player should not walk through
+// Loads assets/room.glb, treats meshes as collidable walls/floors,
+// and finds the named empties (frame_01, video_01, pedestal_01…)
+// where artworks should be attached.
+//
+// To skip collision on a mesh (decorative props you can walk through),
+// give it a name starting with `decor_`, `prop_`, or `nocollide`.
+const collidables = [];
 
-const ROOM_SIZE   = 14;
-const WALL_HEIGHT = 4;
-const half        = ROOM_SIZE / 2;
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+const gltfLoader = new GLTFLoader(manager);
+gltfLoader.setDRACOLoader(dracoLoader);
 
-// Floor
-const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(ROOM_SIZE, ROOM_SIZE),
-  new THREE.MeshStandardMaterial({ color: 0x6b563a, roughness: 0.9 })
-);
-floor.rotation.x = -Math.PI / 2;
-floor.receiveShadow = true;
-scene.add(floor);
+// Anchor name → Object3D in the loaded scene. Populated after .glb loads.
+const anchors = {};
 
-// Ceiling
-const ceiling = new THREE.Mesh(
-  new THREE.PlaneGeometry(ROOM_SIZE, ROOM_SIZE),
-  new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.95 })
-);
-ceiling.rotation.x = Math.PI / 2;
-ceiling.position.y = WALL_HEIGHT;
-scene.add(ceiling);
+gltfLoader.load('./assets/room.glb', (gltf) => {
+  const room = gltf.scene;
 
-// Walls — and a hidden box collider behind each one
-const wallMat = new THREE.MeshStandardMaterial({ color: 0xf0ece4, roughness: 0.8 });
+  room.traverse(node => {
+    // Mesh → enable shadows and (unless decorative) treat as collidable
+    if (node.isMesh) {
+      node.castShadow = true;
+      node.receiveShadow = true;
+      const skip = /^(decor_|prop_|nocollide)/i.test(node.name);
+      if (!skip) collidables.push(node);
+    }
 
-function buildWall(width, height, position, rotationY) {
-  const wall = new THREE.Mesh(new THREE.PlaneGeometry(width, height), wallMat);
-  wall.position.copy(position);
-  wall.rotation.y = rotationY;
-  wall.receiveShadow = true;
-  scene.add(wall);
+    // Anything with a known anchor name (mesh, empty, group — doesn't
+    // matter) becomes an attachment point for an artwork.
+    if (node.name && /^(frame_|video_|pedestal_)/.test(node.name)) {
+      anchors[node.name] = node;
+    }
+  });
 
-  // Invisible thicker box for collisions (planes are 1-sided / thin)
-  const collider = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, 0.2),
-    new THREE.MeshBasicMaterial({ visible: false })
-  );
-  collider.position.copy(position);
-  collider.rotation.y = rotationY;
-  scene.add(collider);
-  collidables.push(collider);
-}
+  scene.add(room);
 
-buildWall(ROOM_SIZE, WALL_HEIGHT, new THREE.Vector3(0, WALL_HEIGHT / 2, -half), 0);
-buildWall(ROOM_SIZE, WALL_HEIGHT, new THREE.Vector3(0, WALL_HEIGHT / 2,  half), Math.PI);
-buildWall(ROOM_SIZE, WALL_HEIGHT, new THREE.Vector3(-half, WALL_HEIGHT / 2, 0), Math.PI / 2);
-buildWall(ROOM_SIZE, WALL_HEIGHT, new THREE.Vector3( half, WALL_HEIGHT / 2, 0), -Math.PI / 2);
-
-// Ambient warm light from a "skylight" rectangle in the ceiling
-const skylight = new THREE.Mesh(
-  new THREE.PlaneGeometry(4, 4),
-  new THREE.MeshBasicMaterial({ color: 0xfff4dd })
-);
-skylight.rotation.x = Math.PI / 2;
-skylight.position.set(0, WALL_HEIGHT - 0.01, 0);
-scene.add(skylight);
+  // Now that the empties are in the scene graph (and have valid world
+  // transforms), attach the artworks defined below.
+  attachArtworks();
+});
 
 // =============================================================
 // 4. ARTWORKS
 // =============================================================
-// Each artwork is registered as an "interactable". Stand in front
-// of one and the crosshair raycast will pick it up; pressing E
-// opens the modal with title/description and the original media.
+// Each entry is attached as a child of the matching named empty in
+// the loaded room.glb. Edit this array to add / remove / reorder works.
+const ARTWORK_DATA = [
+  {
+    anchor: 'frame_01',
+    type: 'image',
+    src: 'https://picsum.photos/seed/portfolio1/1024/768',
+    title: 'Project One',
+    description: 'A short description of this image piece. Replace this text and the image URL with your own work.',
+  },
+  {
+    anchor: 'frame_02',
+    type: 'image',
+    src: 'https://picsum.photos/seed/portfolio2/1024/768',
+    title: 'Project Two',
+    description: 'Another image work, hung wherever frame_02 is in your room.',
+  },
+  {
+    anchor: 'frame_03',
+    type: 'image',
+    src: 'https://picsum.photos/seed/portfolio3/1024/768',
+    title: 'Project Three',
+    description: 'A third image piece. Move the empty in Blender to relocate.',
+  },
+  {
+    anchor: 'video_01',
+    type: 'video',
+    src: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    title: 'Showreel',
+    description: 'A looping video piece. Use H.264 mp4 for best browser support.',
+  },
+  {
+    anchor: 'pedestal_01',
+    type: 'sculpture',
+    title: '3D Sculpture',
+    description: 'Placeholder torus knot. Swap with a GLTFLoader-loaded model later.',
+    color: 0xff6a00,
+  },
+];
+
 const interactables = [];
 
-function addFramedImage({ url, position, rotationY, title, description }) {
-  // Texture + plane "canvas" inside a slightly larger dark "frame"
-  const tex = new THREE.TextureLoader(manager).load(url);
+function attachArtworks() {
+  for (const data of ARTWORK_DATA) {
+    const anchor = anchors[data.anchor];
+    if (!anchor) {
+      console.warn(`[artworks] No anchor named "${data.anchor}" found in room.glb — skipping.`);
+      continue;
+    }
+    if (data.type === 'image')      addFramedImage(anchor, data);
+    else if (data.type === 'video') addFramedVideo(anchor, data);
+    else if (data.type === 'sculpture') addPedestalSculpture(anchor, data);
+  }
+}
+
+function addFramedImage(anchor, { src, title, description }) {
+  const tex = new THREE.TextureLoader(manager).load(src);
   tex.colorSpace = THREE.SRGBColorSpace;
 
   const frame = new THREE.Mesh(
@@ -167,20 +195,14 @@ function addFramedImage({ url, position, rotationY, title, description }) {
   const group = new THREE.Group();
   group.add(frame);
   group.add(art);
-  group.position.copy(position);
-  group.rotation.y = rotationY;
-  group.userData = {
-    title, description,
-    type: 'image',
-    src: url,
-  };
-  scene.add(group);
+  group.userData = { title, description, type: 'image', src };
+  anchor.add(group);            // inherits anchor's world transform
   interactables.push(group);
 }
 
-function addFramedVideo({ url, position, rotationY, title, description }) {
+function addFramedVideo(anchor, { src, title, description }) {
   const video = document.createElement('video');
-  video.src = url;
+  video.src = src;
   video.loop = true;
   video.muted = true;
   video.playsInline = true;
@@ -203,88 +225,40 @@ function addFramedVideo({ url, position, rotationY, title, description }) {
   const group = new THREE.Group();
   group.add(frame);
   group.add(screen);
-  group.position.copy(position);
-  group.rotation.y = rotationY;
-  group.userData = {
-    title, description,
-    type: 'video',
-    src: url,
-    video,
-  };
-  scene.add(group);
+  group.userData = { title, description, type: 'video', src, video };
+  anchor.add(group);
   interactables.push(group);
 }
 
-function addPedestalSculpture({ position, title, description, color = 0xff6a00 }) {
-  // Pedestal
+function addPedestalSculpture(anchor, { title, description, color = 0xff6a00 }) {
+  // Pedestal (visible) + collider so you can't walk through it
   const pedestal = new THREE.Mesh(
     new THREE.CylinderGeometry(0.4, 0.4, 1, 24),
     new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4 })
   );
-  pedestal.position.set(position.x, 0.5, position.z);
+  pedestal.position.y = 0.5;
   pedestal.castShadow = pedestal.receiveShadow = true;
-  scene.add(pedestal);
+  anchor.add(pedestal);
 
-  // Pedestal collider so you can't walk through it
   const pedCollider = new THREE.Mesh(
     new THREE.BoxGeometry(0.9, 1, 0.9),
     new THREE.MeshBasicMaterial({ visible: false })
   );
-  pedCollider.position.copy(pedestal.position);
-  scene.add(pedCollider);
+  pedCollider.position.y = 0.5;
+  anchor.add(pedCollider);
   collidables.push(pedCollider);
 
-  // Sculpture (placeholder — swap with a GLTFLoader-loaded model)
+  // Sculpture (placeholder torus knot — swap for a GLTFLoader model later)
   const sculpture = new THREE.Mesh(
     new THREE.TorusKnotGeometry(0.25, 0.08, 128, 16),
     new THREE.MeshStandardMaterial({ color, metalness: 0.7, roughness: 0.25 })
   );
-  sculpture.position.set(position.x, 1.35, position.z);
+  sculpture.position.y = 1.35;
   sculpture.castShadow = true;
-  sculpture.userData = {
-    title, description,
-    type: 'sculpture',
-    rotates: true,
-  };
-  scene.add(sculpture);
+  sculpture.userData = { title, description, type: 'sculpture', rotates: true };
+  anchor.add(sculpture);
   interactables.push(sculpture);
 }
-
-// --- Sample contents (replace with your own works) ---
-addFramedImage({
-  url: 'https://picsum.photos/seed/portfolio1/1024/768',
-  position: new THREE.Vector3(-3, 1.9, -half + 0.1),
-  rotationY: 0,
-  title: 'Project One',
-  description: 'A short description of this image piece. Replace this text and the image URL with your own work.',
-});
-addFramedImage({
-  url: 'https://picsum.photos/seed/portfolio2/1024/768',
-  position: new THREE.Vector3( 3, 1.9, -half + 0.1),
-  rotationY: 0,
-  title: 'Project Two',
-  description: 'Another image work, hung on the back wall.',
-});
-addFramedImage({
-  url: 'https://picsum.photos/seed/portfolio3/1024/768',
-  position: new THREE.Vector3(-half + 0.1, 1.9, 0),
-  rotationY: Math.PI / 2,
-  title: 'Project Three',
-  description: 'Hung on the left wall — rotation matters.',
-});
-addFramedVideo({
-  // Public sample. Replace with ./assets/videos/your-reel.mp4 once you have one.
-  url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  position: new THREE.Vector3( half - 0.1, 1.9, 0),
-  rotationY: -Math.PI / 2,
-  title: 'Showreel',
-  description: 'A looping video piece. Use H.264 mp4 for best browser support.',
-});
-addPedestalSculpture({
-  position: new THREE.Vector3(0, 0, 0),
-  title: '3D Sculpture',
-  description: 'Replace this torus knot with your own .glb via GLTFLoader.',
-});
 
 // =============================================================
 // 5. DESKTOP CONTROLS
@@ -324,21 +298,17 @@ document.addEventListener('keyup', (e) => { keys[e.code] = false; });
 // =============================================================
 // 6. MOBILE CONTROLS
 // =============================================================
-// Pointer lock isn't available on mobile, so we replace it with:
-//   • a virtual joystick on the left (movement)
-//   • drag-to-look on the right half of the screen
-//   • an "E" button that fires the same interact action
 const isMobile = matchMedia('(pointer: coarse)').matches || /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent);
 const touchUI    = document.getElementById('touch-ui');
 const joystick   = document.getElementById('joystick');
 const knob       = document.getElementById('joystick-knob');
 const interactBtn= document.getElementById('touch-interact');
 
-let joyVec = { x: 0, y: 0 };       // -1..1 on each axis
+let joyVec = { x: 0, y: 0 };
 let joyTouchId = null;
 let lookTouchId = null;
 let lookLast = { x: 0, y: 0 };
-const cameraEuler = new THREE.Euler(0, 0, 0, 'YXZ'); // for manual rotation on mobile
+const cameraEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
 if (isMobile) {
   touchUI.classList.remove('hidden');
@@ -373,11 +343,10 @@ if (isMobile) {
     }
   });
 
-  // Any touch that starts on the right half (and isn't on the UI) becomes a "look" touch
   document.addEventListener('touchstart', (e) => {
     if (!menuHiddenFlag) return;
     for (const t of e.changedTouches) {
-      const onUi = t.target.closest('#touch-ui, #artwork-modal, #menu');
+      const onUi = t.target.closest('#touch-ui, #artwork-modal, #menu, #resume-overlay');
       if (onUi) continue;
       if (t.clientX > window.innerWidth / 2 && lookTouchId === null) {
         lookTouchId = t.identifier;
@@ -401,7 +370,7 @@ function updateJoystick(touch) {
   const dist = Math.min(max, Math.hypot(dx, dy));
   const ang = Math.atan2(dy, dx);
   joyVec.x =  Math.cos(ang) * (dist / max);
-  joyVec.y = -Math.sin(ang) * (dist / max); // up = forward
+  joyVec.y = -Math.sin(ang) * (dist / max);
   knob.style.transform = `translate(calc(-50% + ${Math.cos(ang) * dist}px), calc(-50% + ${Math.sin(ang) * dist}px))`;
 }
 function resetKnob() {
@@ -412,7 +381,7 @@ function resetKnob() {
 // 7. INTERACTION (raycast → prompt → modal)
 // =============================================================
 const raycaster = new THREE.Raycaster();
-raycaster.far = 3.5; // only show prompt within ~3.5m
+raycaster.far = 3.5;
 const promptEl = document.getElementById('prompt');
 const modal    = document.getElementById('artwork-modal');
 const modalMedia       = document.getElementById('modal-media');
@@ -421,8 +390,6 @@ const modalDescription = document.getElementById('modal-description');
 let currentInteractable = null;
 
 function checkInteraction() {
-  // On desktop the experience is "started" when pointer is locked.
-  // On mobile we use a flag instead.
   const active = isMobile ? menuHiddenFlag : controls.isLocked;
   if (!active) { promptEl.classList.add('hidden'); currentInteractable = null; return; }
 
@@ -430,7 +397,6 @@ function checkInteraction() {
   const hits = raycaster.intersectObjects(interactables, true);
 
   if (hits.length > 0) {
-    // Walk up parents until we hit one of the registered interactables
     let obj = hits[0].object;
     while (obj.parent && !interactables.includes(obj)) obj = obj.parent;
     currentInteractable = obj;
@@ -443,78 +409,52 @@ function checkInteraction() {
 }
 
 function openArtworkModal(data) {
-  // Clear previous media node
   modalMedia.innerHTML = '';
-
   if (data.type === 'image') {
     const img = document.createElement('img');
-    img.src = data.src;
-    img.alt = data.title;
+    img.src = data.src; img.alt = data.title;
     modalMedia.appendChild(img);
   } else if (data.type === 'video') {
     const v = document.createElement('video');
-    v.src = data.src;
-    v.controls = true;
-    v.autoplay = true;
-    v.playsInline = true;
+    v.src = data.src; v.controls = true; v.autoplay = true; v.playsInline = true;
     modalMedia.appendChild(v);
-  } else {
-    // 3D sculpture or unknown: skip media, show only text
   }
-
   modalTitle.textContent       = data.title;
   modalDescription.textContent = data.description;
   modal.classList.remove('hidden');
-
-  // Release pointer lock so user can read / scroll / click
   if (controls.isLocked) controls.unlock();
 }
+
 function closeArtworkModal() {
   modal.classList.add('hidden');
   modalMedia.innerHTML = '';
 }
-// Clicking the X is a fresh user gesture, so we can re-lock pointer
-// immediately — no resume overlay needed. The Escape path is handled
-// separately in the keydown listener (it can't re-lock right away due
-// to Chrome's post-Escape pointer-lock cooldown).
+
 document.getElementById('modal-close').addEventListener('click', () => {
   closeArtworkModal();
   if (!isMobile && menuHiddenFlag) controls.lock();
 });
 
-// --- Resume overlay (shown whenever pointer lock is released mid-game) ---
+// =============================================================
+// 8. RESUME OVERLAY + START MENU
+// =============================================================
 const resumeOverlay = document.getElementById('resume-overlay');
 const resumeButton  = document.getElementById('resume-button');
 
-function showResumeOverlay() {
-  resumeOverlay.classList.remove('hidden');
-}
-function hideResumeOverlay() {
-  resumeOverlay.classList.add('hidden');
-}
+function showResumeOverlay() { resumeOverlay.classList.remove('hidden'); }
+function hideResumeOverlay() { resumeOverlay.classList.add('hidden'); }
 
 resumeButton.addEventListener('click', () => {
   hideResumeOverlay();
   controls.lock();
 });
 
-// If the user presses Escape mid-walk (or any other unlock cause) while
-// the modal is closed and the experience has started, show the overlay.
 controls.addEventListener('unlock', () => {
-  if (menuHiddenFlag && modal.classList.contains('hidden')) {
-    showResumeOverlay();
-  }
+  if (menuHiddenFlag && modal.classList.contains('hidden')) showResumeOverlay();
 });
-controls.addEventListener('lock', () => {
-  hideResumeOverlay();
-});
+controls.addEventListener('lock', () => { hideResumeOverlay(); });
 
-// =============================================================
-// 8. STARTING THE EXPERIENCE (title menu → 3D scene)
-// =============================================================
 let menuHiddenFlag = false;
-function menuHidden() { return menuHiddenFlag; }
-
 function startExperience() {
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
@@ -528,7 +468,7 @@ startBtn.addEventListener('click', startExperience);
 // =============================================================
 const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.4;
-const SPEED         = 4.0; // m/s
+const SPEED         = 4.0;
 
 const _forward = new THREE.Vector3();
 const _right   = new THREE.Vector3();
@@ -536,8 +476,6 @@ const _move    = new THREE.Vector3();
 const _testRay = new THREE.Raycaster();
 
 function canMove(direction, distance) {
-  // Cast a ray from the player position in `direction` and check if any
-  // collidable is closer than (radius + distance). If so, we'd embed in it.
   _testRay.set(camera.position, direction);
   _testRay.far = PLAYER_RADIUS + distance + 0.01;
   const hits = _testRay.intersectObjects(collidables, false);
@@ -548,13 +486,11 @@ function updateMovement(dt) {
   const active = isMobile ? menuHiddenFlag : controls.isLocked;
   if (!active) return;
 
-  // Build forward / right vectors flattened to the XZ plane
   _forward.set(0, 0, -1).applyQuaternion(camera.quaternion);
   _forward.y = 0; _forward.normalize();
   _right.set(1, 0, 0).applyQuaternion(camera.quaternion);
   _right.y = 0; _right.normalize();
 
-  // Combine keyboard + joystick input
   let inputX = 0, inputZ = 0;
   if (keys['KeyW']) inputZ += 1;
   if (keys['KeyS']) inputZ -= 1;
@@ -571,11 +507,10 @@ function updateMovement(dt) {
   _move.set(0, 0, 0)
     .addScaledVector(_forward, inputZ)
     .addScaledVector(_right,   inputX);
-  if (_move.lengthSq() > 1) _move.normalize(); // cap diagonal speed
+  if (_move.lengthSq() > 1) _move.normalize();
 
   const distance = SPEED * dt;
 
-  // Test X and Z separately so you slide along walls instead of getting stuck
   if (Math.abs(_move.x) > 1e-4) {
     const dir = new THREE.Vector3(Math.sign(_move.x), 0, 0);
     if (canMove(dir, Math.abs(_move.x) * distance)) {
@@ -593,58 +528,21 @@ function updateMovement(dt) {
 }
 
 // =============================================================
-// ANIMATION LOOP
+// 9. ANIMATION LOOP + RESIZE
 // =============================================================
 const clock = new THREE.Clock();
-
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.1);
-
   updateMovement(dt);
   checkInteraction();
-
-  // Spin anything tagged userData.rotates (e.g. the sculpture)
   scene.traverse(o => { if (o.userData && o.userData.rotates) o.rotation.y += dt * 0.4; });
-
   renderer.render(scene, camera);
 }
 animate();
 
-// =============================================================
-// RESIZE
-// =============================================================
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-// =============================================================
-// LOADING YOUR BLENDER ROOM (uncomment when ready)
-// =============================================================
-// To replace the placeholder room with your own .glb:
-//   1. Export from Blender as glTF 2.0 (.glb), with Draco compression.
-//   2. Drop the file at ./assets/room.glb
-//   3. Delete (or comment out) the "PLACEHOLDER ROOM" block above
-//      and the placeholder collidables it pushes.
-//   4. Uncomment this block.
-//
-// const dracoLoader = new DRACOLoader();
-// dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
-// const gltfLoader = new GLTFLoader(manager);
-// gltfLoader.setDRACOLoader(dracoLoader);
-//
-// gltfLoader.load('./assets/room.glb', (gltf) => {
-//   const room = gltf.scene;
-//   room.traverse(node => {
-//     if (node.isMesh) {
-//       node.castShadow = node.receiveShadow = true;
-//       // Treat every wall/floor mesh as a collidable. If you want only
-//       // *some* meshes to be collidable, name them e.g. "wall_*" in
-//       // Blender and check `if (node.name.startsWith('wall_'))` here.
-//       collidables.push(node);
-//     }
-//   });
-//   scene.add(room);
-// });
