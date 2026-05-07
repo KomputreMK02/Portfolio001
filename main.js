@@ -22,6 +22,23 @@ import { DRACOLoader }         from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment }     from 'three/addons/environments/RoomEnvironment.js';
 
 // =============================================================
+// CLASSIC-ERA AESTHETIC KNOBS
+// =============================================================
+// All three effects can be dialed individually. Set any to its
+// "off" value to disable that effect cleanly.
+
+// Render at 1/Nth of the screen resolution and let CSS nearest-neighbor
+// upscale. 1 = no pixelation, 3–4 = mid PS2 vibe, 6+ = crunchy PS1.
+const PIXELATION = 3;
+
+// Snap vertices to a grid of (N × N) positions in clip space. Lower N =
+// more wobble. Set to 0 to disable.
+const PS1_JITTER = 160;
+
+// Apply NEAREST filtering to all textures (no bilinear smoothing).
+const PIXEL_TEXTURES = true;
+
+// =============================================================
 // 1. LOADING MANAGER
 // =============================================================
 const manager = new THREE.LoadingManager();
@@ -48,9 +65,15 @@ manager.onError = (url) => {
 // 2. RENDERER / SCENE / CAMERA / LIGHTS
 // =============================================================
 const canvas   = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+renderer.setPixelRatio(1); // ignore device DPR — we want fixed low-res output
+function applyRendererSize() {
+  const w = Math.max(1, Math.floor(window.innerWidth  / PIXELATION));
+  const h = Math.max(1, Math.floor(window.innerHeight / PIXELATION));
+  // setSize(w, h, false) means: don't update canvas style — let CSS upscale.
+  renderer.setSize(w, h, false);
+}
+applyRendererSize();
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping       = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
@@ -73,6 +96,13 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 pmrem.dispose();
 
+// Soft hemisphere fill so faces that the directional sun can't reach
+// (notably the underside of the ceiling) aren't pitch black. Once you
+// add light_* fixtures to room.glb, this will mostly be redundant —
+// the fixtures will provide proper directional fill from above.
+const fillHemi = new THREE.HemisphereLight(0xffffff, 0x666666, 0.35);
+scene.add(fillHemi);
+
 // PS2-vibe shadow caster. Low intensity (most of the lighting is from the
 // environment map above) — this light exists mainly to throw chunky
 // hard-edged shadows under frames and props. Smaller mapSize = more pixely.
@@ -87,6 +117,55 @@ shadowSun.shadow.camera.bottom = -10;
 shadowSun.shadow.camera.near   = 0.5;
 shadowSun.shadow.camera.far    = 30;
 scene.add(shadowSun);
+
+// =============================================================
+// PS1/PS2 EFFECT HELPERS
+// =============================================================
+// Use these on any texture / material we create or load.
+
+function ps1Texture(tex) {
+  if (!tex || !PIXEL_TEXTURES) return tex;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function ps1Material(mat) {
+  if (!mat || PS1_JITTER <= 0) return mat;
+  // Hook into the standard material's vertex shader to snap clip-space
+  // positions to a low-res grid. This is the classic "vertex wobble".
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <project_vertex>',
+      `
+        #include <project_vertex>
+        // PS1 vertex snap
+        float ps1Res = ${PS1_JITTER.toFixed(1)};
+        gl_Position.xy = floor(gl_Position.xy * ps1Res / gl_Position.w)
+                          * gl_Position.w / ps1Res;
+      `
+    );
+  };
+  // Force shader recompile if the material was already used
+  mat.customProgramCacheKey = () => 'ps1_jitter_' + PS1_JITTER;
+  mat.needsUpdate = true;
+  return mat;
+}
+
+function ps1MeshMaterials(node) {
+  if (!node.material) return;
+  const mats = Array.isArray(node.material) ? node.material : [node.material];
+  for (const m of mats) {
+    ps1Material(m);
+    // Also crunch any textures the material is using
+    for (const slot of ['map', 'normalMap', 'roughnessMap', 'metalnessMap',
+                        'aoMap', 'emissiveMap', 'alphaMap']) {
+      if (m[slot]) ps1Texture(m[slot]);
+    }
+  }
+}
 
 // =============================================================
 // 3. ROOM LOADER
@@ -124,7 +203,32 @@ gltfLoader.load('./assets/room.glb', (gltf) => {
         for (const m of mats) m.side = THREE.DoubleSide;
       }
 
-      const skip = /^(decor_|prop_|nocollide)/i.test(node.name);
+      // Apply the PS1/PS2 vertex jitter + nearest-filter textures
+      ps1MeshMaterials(node);
+
+      // Light fixture meshes (e.g. ceiling panels) become emissive AND
+      // spawn a real PointLight at their world position. Don't make them
+      // shadow-casters — they'd block their own light.
+      if (node.name && /^light_/i.test(node.name)) {
+        node.castShadow = false;
+
+        if (node.material) {
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          for (const m of mats) {
+            m.emissive = new THREE.Color(0xfff4dd);
+            m.emissiveIntensity = 1.2;
+          }
+        }
+
+        const pos = new THREE.Vector3();
+        node.getWorldPosition(pos);
+        const lamp = new THREE.PointLight(0xfff4dd, 8, 12, 2);
+        lamp.position.copy(pos);
+        lamp.position.y -= 0.05; // nudge below the panel so it casts down
+        scene.add(lamp);
+      }
+
+      const skip = /^(decor_|prop_|nocollide|light_)/i.test(node.name);
       if (!skip) collidables.push(node);
     }
 
@@ -203,14 +307,15 @@ function attachArtworks() {
 function addFramedImage(anchor, { src, title, description }) {
   const tex = new THREE.TextureLoader(manager).load(src);
   tex.colorSpace = THREE.SRGBColorSpace;
+  ps1Texture(tex);
 
   const frame = new THREE.Mesh(
     new THREE.BoxGeometry(2.2, 1.7, 0.08),
-    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 })
+    ps1Material(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 }))
   );
   const art = new THREE.Mesh(
     new THREE.PlaneGeometry(2, 1.5),
-    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 })
+    ps1Material(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 }))
   );
   art.position.z = 0.05;
 
@@ -233,14 +338,15 @@ function addFramedVideo(anchor, { src, title, description }) {
 
   const tex = new THREE.VideoTexture(video);
   tex.colorSpace = THREE.SRGBColorSpace;
+  ps1Texture(tex);
 
   const frame = new THREE.Mesh(
     new THREE.BoxGeometry(2.4, 1.5, 0.08),
-    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 })
+    ps1Material(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 }))
   );
   const screen = new THREE.Mesh(
     new THREE.PlaneGeometry(2.2, 1.3),
-    new THREE.MeshBasicMaterial({ map: tex })
+    new THREE.MeshBasicMaterial({ map: tex }) // BasicMaterial = no jitter shader, that's fine
   );
   screen.position.z = 0.05;
 
@@ -256,7 +362,7 @@ function addPedestalSculpture(anchor, { title, description, color = 0xff6a00 }) 
   // Pedestal (visible) + collider so you can't walk through it
   const pedestal = new THREE.Mesh(
     new THREE.CylinderGeometry(0.4, 0.4, 1, 24),
-    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4 })
+    ps1Material(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4 }))
   );
   pedestal.position.y = 0.5;
   pedestal.castShadow = pedestal.receiveShadow = true;
@@ -273,7 +379,7 @@ function addPedestalSculpture(anchor, { title, description, color = 0xff6a00 }) 
   // Sculpture (placeholder torus knot — swap for a GLTFLoader model later)
   const sculpture = new THREE.Mesh(
     new THREE.TorusKnotGeometry(0.25, 0.08, 128, 16),
-    new THREE.MeshStandardMaterial({ color, metalness: 0.7, roughness: 0.25 })
+    ps1Material(new THREE.MeshStandardMaterial({ color, metalness: 0.7, roughness: 0.25 }))
   );
   sculpture.position.y = 1.35;
   sculpture.castShadow = true;
@@ -566,5 +672,5 @@ animate();
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  applyRendererSize();
 });
