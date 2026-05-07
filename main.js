@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { GLTFLoader }          from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader }         from 'three/addons/loaders/DRACOLoader.js';
+import { RoomEnvironment }     from 'three/addons/environments/RoomEnvironment.js';
 
 // =============================================================
 // 1. LOADING MANAGER
@@ -63,24 +64,13 @@ scene.fog = new THREE.Fog(0x0a0a0a, 12, 40);
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 100);
 camera.position.set(0, 1.7, 5); // 1.7m = roughly eye height
 
-// Three-light fill that approximates Blender's default viewport feel.
-// Ambient gives a flat base, hemisphere adds a soft sky-vs-ground tint,
-// directional sun gives directional shadows + highlights.
-scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-
-const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
-hemi.position.set(0, 20, 0);
-scene.add(hemi);
-
-const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-sun.position.set(6, 10, 4);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left   = -10;
-sun.shadow.camera.right  =  10;
-sun.shadow.camera.top    =  10;
-sun.shadow.camera.bottom = -10;
-scene.add(sun);
+// Neutral image-based lighting — same setup gltf-viewer.donmccurdy.com uses.
+// RoomEnvironment is a procedural "indoor box" preset baked through Three's
+// PMREMGenerator; the result is soft, even fill from every direction with no
+// directional shadows. Want a sun back later? Just add a DirectionalLight.
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+pmrem.dispose();
 
 // =============================================================
 // 3. ROOM LOADER
