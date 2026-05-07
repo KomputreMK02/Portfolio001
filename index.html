@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Portfolio Gallery</title>
+  <link rel="stylesheet" href="./style.css" />
+
+  <!-- Import map: lets us write `import * as THREE from 'three'` with no build step.
+       GitHub Pages serves the page over HTTPS, the CDN serves Three.js — that's it. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- ============ TITLE MENU ============ -->
+  <!-- This sits on top of everything until the user presses Start.
+       Loading happens in the background; the Start button is disabled
+       until the LoadingManager reports 100%. -->
+  <div id="menu" class="overlay">
+    <div class="menu-inner">
+      <h1 class="title">YOUR&nbsp;NAME</h1>
+      <p class="subtitle">An interactive portfolio</p>
+
+      <div class="loading">
+        <div class="bar"><div id="progress-bar"></div></div>
+        <div id="progress-text">Loading… 0%</div>
+      </div>
+
+      <button id="start-button" class="btn" disabled>Start</button>
+      <p class="hint">Press <kbd>Enter</kbd> or click Start</p>
+
+      <div class="controls-hint">
+        <div><strong>WASD</strong> move &nbsp;·&nbsp; <strong>Mouse</strong> look &nbsp;·&nbsp; <strong>E</strong> interact &nbsp;·&nbsp; <strong>Esc</strong> menu</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 3D SCENE ============ -->
+  <canvas id="scene"></canvas>
+
+  <!-- ============ HUD ============ -->
+  <div id="hud" class="hidden">
+    <div id="crosshair"></div>
+    <div id="prompt" class="hidden"></div>
+  </div>
+
+  <!-- ============ ARTWORK MODAL ============ -->
+  <!-- Opens when player presses E on an interactable. Pointer lock releases
+       so the user can read / click. Closing returns to the scene. -->
+  <div id="artwork-modal" class="overlay hidden">
+    <div class="modal-card">
+      <button id="modal-close" class="modal-close" aria-label="Close">×</button>
+      <div id="modal-media"></div>
+      <h2 id="modal-title"></h2>
+      <p id="modal-description"></p>
+    </div>
+  </div>
+
+  <!-- ============ MOBILE TOUCH CONTROLS ============ -->
+  <!-- Hidden by default; shown when a touch device is detected. -->
+  <div id="touch-ui" class="hidden">
+    <div id="joystick">
+      <div id="joystick-knob"></div>
+    </div>
+    <button id="touch-interact" aria-label="Interact">E</button>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
