@@ -50,6 +50,17 @@
     <div id="prompt" class="hidden"></div>
   </div>
 
+  <!-- ============ RESUME OVERLAY ============ -->
+  <!-- Shown when pointer lock is released (after closing a modal, or
+       if the user pressed Escape mid-game). A click re-acquires lock. -->
+  <div id="resume-overlay" class="overlay hidden">
+    <div class="menu-inner">
+      <p class="subtitle">Paused</p>
+      <button id="resume-button" class="btn">Click to resume</button>
+      <p class="hint">or press <kbd>Enter</kbd></p>
+    </div>
+  </div>
+
   <!-- ============ ARTWORK MODAL ============ -->
   <!-- Opens when player presses E on an interactable. Pointer lock releases
        so the user can read / click. Closing returns to the scene. -->

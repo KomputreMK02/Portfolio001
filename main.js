@@ -295,9 +295,15 @@ const keys = Object.create(null);
 document.addEventListener('keydown', (e) => {
   keys[e.code] = true;
 
-  // Enter on the title screen also starts the experience
-  if (e.code === 'Enter' && !startBtn.disabled && !menuHidden()) {
-    startExperience();
+  // Enter on the title screen starts the experience;
+  // Enter on the resume overlay re-engages pointer lock.
+  if (e.code === 'Enter') {
+    if (!menuHiddenFlag && !startBtn.disabled) {
+      startExperience();
+    } else if (menuHiddenFlag && !resumeOverlay.classList.contains('hidden')) {
+      hideResumeOverlay();
+      controls.lock();
+    }
   }
   // E to interact with whatever the crosshair is on
   if (e.code === 'KeyE' && currentInteractable && controls.isLocked) {
@@ -461,10 +467,40 @@ function openArtworkModal(data) {
 function closeArtworkModal() {
   modal.classList.add('hidden');
   modalMedia.innerHTML = '';
-  // Re-engage pointer lock on desktop (mobile keeps using flag-based active state)
-  if (!isMobile) controls.lock();
+  // Don't try to programmatically re-lock here — Chrome enforces a short
+  // cooldown after Escape releases pointer lock, so a controls.lock() call
+  // would silently fail. Show a resume overlay instead; the user's click
+  // on it is a fresh gesture that locks reliably.
+  if (!isMobile && menuHiddenFlag) showResumeOverlay();
 }
 document.getElementById('modal-close').addEventListener('click', closeArtworkModal);
+
+// --- Resume overlay (shown whenever pointer lock is released mid-game) ---
+const resumeOverlay = document.getElementById('resume-overlay');
+const resumeButton  = document.getElementById('resume-button');
+
+function showResumeOverlay() {
+  resumeOverlay.classList.remove('hidden');
+}
+function hideResumeOverlay() {
+  resumeOverlay.classList.add('hidden');
+}
+
+resumeButton.addEventListener('click', () => {
+  hideResumeOverlay();
+  controls.lock();
+});
+
+// If the user presses Escape mid-walk (or any other unlock cause) while
+// the modal is closed and the experience has started, show the overlay.
+controls.addEventListener('unlock', () => {
+  if (menuHiddenFlag && modal.classList.contains('hidden')) {
+    showResumeOverlay();
+  }
+});
+controls.addEventListener('lock', () => {
+  hideResumeOverlay();
+});
 
 // =============================================================
 // 8. STARTING THE EXPERIENCE (title menu → 3D scene)
