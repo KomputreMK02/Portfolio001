@@ -255,7 +255,7 @@ const ARTWORK_DATA = [
   {
     anchor: 'frame_01',
     type: 'image',
-    src: '/assets/frame_01.jpg',
+    src: 'assets/frame_01.jpg',
     title: 'Project One',
     description: 'A short description of this image piece. Replace this text and the image URL with your own work.',
   },
