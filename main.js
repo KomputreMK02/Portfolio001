@@ -309,9 +309,14 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyE' && currentInteractable && controls.isLocked) {
     openArtworkModal(currentInteractable.userData);
   }
-  // Esc closes modal (the browser already releases pointer lock for us)
+  // Esc closes the modal. Because Escape itself releases pointer lock and
+  // Chrome blocks immediate re-locking, we surface the resume overlay
+  // instead of trying to lock right away.
   if (e.code === 'Escape') {
-    if (!modal.classList.contains('hidden')) closeArtworkModal();
+    if (!modal.classList.contains('hidden')) {
+      closeArtworkModal();
+      if (!isMobile && menuHiddenFlag) showResumeOverlay();
+    }
   }
 });
 document.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -467,13 +472,15 @@ function openArtworkModal(data) {
 function closeArtworkModal() {
   modal.classList.add('hidden');
   modalMedia.innerHTML = '';
-  // Don't try to programmatically re-lock here — Chrome enforces a short
-  // cooldown after Escape releases pointer lock, so a controls.lock() call
-  // would silently fail. Show a resume overlay instead; the user's click
-  // on it is a fresh gesture that locks reliably.
-  if (!isMobile && menuHiddenFlag) showResumeOverlay();
 }
-document.getElementById('modal-close').addEventListener('click', closeArtworkModal);
+// Clicking the X is a fresh user gesture, so we can re-lock pointer
+// immediately — no resume overlay needed. The Escape path is handled
+// separately in the keydown listener (it can't re-lock right away due
+// to Chrome's post-Escape pointer-lock cooldown).
+document.getElementById('modal-close').addEventListener('click', () => {
+  closeArtworkModal();
+  if (!isMobile && menuHiddenFlag) controls.lock();
+});
 
 // --- Resume overlay (shown whenever pointer lock is released mid-game) ---
 const resumeOverlay = document.getElementById('resume-overlay');
