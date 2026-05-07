@@ -63,9 +63,16 @@ scene.fog = new THREE.Fog(0x0a0a0a, 12, 40);
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 100);
 camera.position.set(0, 1.7, 5); // 1.7m = roughly eye height
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+// Three-light fill that approximates Blender's default viewport feel.
+// Ambient gives a flat base, hemisphere adds a soft sky-vs-ground tint,
+// directional sun gives directional shadows + highlights.
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 
-const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+hemi.position.set(0, 20, 0);
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
 sun.position.set(6, 10, 4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -102,6 +109,15 @@ gltfLoader.load('./assets/room.glb', (gltf) => {
     if (node.isMesh) {
       node.castShadow = true;
       node.receiveShadow = true;
+
+      // Render both faces. Belt-and-suspenders against Blender exports
+      // where some faces have inward-facing normals (which would otherwise
+      // appear black under the lighting).
+      if (node.material) {
+        const mats = Array.isArray(node.material) ? node.material : [node.material];
+        for (const m of mats) m.side = THREE.DoubleSide;
+      }
+
       const skip = /^(decor_|prop_|nocollide)/i.test(node.name);
       if (!skip) collidables.push(node);
     }
