@@ -255,7 +255,7 @@ const ARTWORK_DATA = [
   {
     anchor: 'frame_01',
     type: 'image',
-    src: 'https://picsum.photos/seed/portfolio1/1024/768',
+    src: '/assets/frame_01.jpg',
     title: 'Project One',
     description: 'A short description of this image piece. Replace this text and the image URL with your own work.',
   },
