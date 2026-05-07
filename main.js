@@ -55,7 +55,9 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping       = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+// BasicShadowMap = no filtering, hard pixelated edges. Combined with a
+// low-resolution shadow map below, this is the chunky PS2 / Dreamcast look.
+renderer.shadowMap.type    = THREE.BasicShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0a0a);
@@ -66,11 +68,25 @@ camera.position.set(0, 1.7, 5); // 1.7m = roughly eye height
 
 // Neutral image-based lighting — same setup gltf-viewer.donmccurdy.com uses.
 // RoomEnvironment is a procedural "indoor box" preset baked through Three's
-// PMREMGenerator; the result is soft, even fill from every direction with no
-// directional shadows. Want a sun back later? Just add a DirectionalLight.
+// PMREMGenerator; the result is soft, even fill from every direction.
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 pmrem.dispose();
+
+// PS2-vibe shadow caster. Low intensity (most of the lighting is from the
+// environment map above) — this light exists mainly to throw chunky
+// hard-edged shadows under frames and props. Smaller mapSize = more pixely.
+const shadowSun = new THREE.DirectionalLight(0xffffff, 0.4);
+shadowSun.position.set(5, 10, 3);
+shadowSun.castShadow = true;
+shadowSun.shadow.mapSize.set(512, 512);   // try 256 for extra chunky PS1 vibe
+shadowSun.shadow.camera.left   = -10;
+shadowSun.shadow.camera.right  =  10;
+shadowSun.shadow.camera.top    =  10;
+shadowSun.shadow.camera.bottom = -10;
+shadowSun.shadow.camera.near   = 0.5;
+shadowSun.shadow.camera.far    = 30;
+scene.add(shadowSun);
 
 // =============================================================
 // 3. ROOM LOADER
