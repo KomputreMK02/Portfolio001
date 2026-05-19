@@ -41,6 +41,15 @@ canvas#scene {
   text-transform: uppercase;
 }
 
+.title-image {
+  display: block;
+  max-width: 90%;
+  max-height: 240px;
+  margin: 0 auto 0.75rem;
+  filter: drop-shadow(0 4px 18px rgba(0,0,0,0.6));
+  image-rendering: pixelated;
+}
+
 .subtitle {
   font-size: 1rem;
   letter-spacing: 0.2em;
@@ -198,6 +207,114 @@ kbd {
 #modal-description {
   opacity: 0.7;
   line-height: 1.6;
+}
+
+/* ============ Inventory ============ */
+.inventory-card {
+  max-width: 560px;
+  width: 90%;
+}
+
+.inv-title {
+  font-size: 1.5rem;
+  font-weight: 300;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.inv-slot {
+  aspect-ratio: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 0.5rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.inv-slot.filled {
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.3);
+}
+
+.inv-slot:hover.filled {
+  background: rgba(255,255,255,0.15);
+}
+
+.inv-slot.selected {
+  border-color: #fff;
+  background: rgba(255,255,255,0.12);
+}
+
+.inv-slot img {
+  max-width: 70%;
+  max-height: 65%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  margin-bottom: 0.25rem;
+}
+
+.inv-slot .slot-name {
+  opacity: 0.75;
+  line-height: 1.2;
+}
+
+.inventory-detail {
+  min-height: 4rem;
+  padding: 0.75rem 1rem;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+  text-align: left;
+  margin-bottom: 1rem;
+}
+
+.inventory-detail h3 {
+  font-size: 0.95rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+  font-weight: 400;
+}
+
+.inventory-detail p {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+/* ============ Toast (pickup notifications) ============ */
+#toast {
+  position: fixed;
+  bottom: 22%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.7);
+  border: 1px solid rgba(255,255,255,0.25);
+  padding: 0.7rem 1.6rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  z-index: 70;
+  backdrop-filter: blur(8px);
+  animation: toast-in 0.25s ease both;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
 /* ============ Mobile touch UI ============ */

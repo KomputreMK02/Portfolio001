@@ -232,18 +232,17 @@ gltfLoader.load('./assets/room.glb', (gltf) => {
       if (!skip) collidables.push(node);
     }
 
-    // Anything with a known anchor name (mesh, empty, group — doesn't
-    // matter) becomes an attachment point for an artwork.
-    if (node.name && /^(frame_|video_|pedestal_)/.test(node.name)) {
+    // Anything with a known anchor name becomes an attachment point.
+    if (node.name && /^(frame_|video_|pedestal_|pickup_)/.test(node.name)) {
       anchors[node.name] = node;
     }
   });
 
   scene.add(room);
 
-  // Now that the empties are in the scene graph (and have valid world
-  // transforms), attach the artworks defined below.
+  // Attach artworks + collectibles to the empties we just discovered.
   attachArtworks();
+  attachCollectibles();
 });
 
 // =============================================================
@@ -290,6 +289,59 @@ const ARTWORK_DATA = [
 ];
 
 const interactables = [];
+
+// =============================================================
+// COLLECTIBLES — pickup items defined in the room
+// =============================================================
+// Each entry attaches to an empty named `pickup_*` in room.glb.
+// Add empties in Blender with names matching the `anchor` strings below.
+// Items appear as glowing floating cubes; press E while looking at one
+// to add it to the inventory.
+const COLLECTIBLES_DATA = [
+  {
+    anchor: 'pickup_cigarettes',
+    id: 'cigarettes',
+    name: 'Pack of Cigarettes',
+    description: 'A half-empty pack of cigarettes. Picked up somewhere in the gallery.',
+    color: 0xc89977,
+    // iconUrl: './assets/items/cigarettes.png',  // optional — add later
+  },
+];
+
+function attachCollectibles() {
+  for (const data of COLLECTIBLES_DATA) {
+    const anchor = anchors[data.anchor];
+    if (!anchor) continue; // silently skip if Blender hasn't been updated yet
+    addCollectible(anchor, data);
+  }
+}
+
+function addCollectible(anchor, data) {
+  const cube = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 0.12, 0.08),
+    ps1Material(new THREE.MeshStandardMaterial({
+      color: data.color || 0xffffff,
+      emissive: data.color || 0xffaa00,
+      emissiveIntensity: 0.4,
+      roughness: 0.5,
+    }))
+  );
+  cube.position.y = 1.0;
+  cube.castShadow = true;
+  cube.userData = {
+    type: 'pickup',
+    id: data.id,
+    name: data.name,
+    description: data.description,
+    iconUrl: data.iconUrl,
+    color: data.color,
+    rotates: true,
+    bobs: true,
+    bobBase: 1.0,
+  };
+  anchor.add(cube);
+  interactables.push(cube);
+}
 
 function attachArtworks() {
   for (const data of ARTWORK_DATA) {
@@ -397,27 +449,59 @@ const keys = Object.create(null);
 document.addEventListener('keydown', (e) => {
   keys[e.code] = true;
 
-  // Enter on the title screen starts the experience;
-  // Enter on the resume overlay re-engages pointer lock.
+  // -- Title / resume screens -------------------------------------------
   if (e.code === 'Enter') {
+    // Closing the artwork modal also accepts Enter (player-friendly).
+    if (!modal.classList.contains('hidden')) {
+      closeArtworkModal();
+      if (!isMobile && menuHiddenFlag) controls.lock();
+      e.preventDefault();
+      return;
+    }
+    // Start menu
     if (!menuHiddenFlag && !startBtn.disabled) {
       startExperience();
-    } else if (menuHiddenFlag && !resumeOverlay.classList.contains('hidden')) {
+      return;
+    }
+    // Resume overlay
+    if (menuHiddenFlag && !resumeOverlay.classList.contains('hidden')) {
       hideResumeOverlay();
       controls.lock();
+      return;
     }
   }
-  // E to interact with whatever the crosshair is on
-  if (e.code === 'KeyE' && currentInteractable && controls.isLocked) {
-    openArtworkModal(currentInteractable.userData);
+
+  // -- In-game actions (only when the experience has started) -----------
+  const inGame = isMobile ? menuHiddenFlag : controls.isLocked;
+  if (!inGame) return;
+
+  // E = context interact / fallback to inventory
+  if (e.code === 'KeyE') {
+    handleInteract();
+    e.preventDefault();
   }
-  // Esc closes the modal. Because Escape itself releases pointer lock and
-  // Chrome blocks immediate re-locking, we surface the resume overlay
-  // instead of trying to lock right away.
+
+  // Tab = always toggle inventory
+  if (e.code === 'Tab') {
+    e.preventDefault();
+    toggleInventory();
+  }
+
+  // Space = jump (only when on the ground)
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (isGrounded) playerVy = JUMP_VELOCITY;
+  }
+
+  // Esc closes the artwork modal — and Chrome auto-releases pointer lock,
+  // so we surface the resume overlay (Chrome blocks immediate re-locking).
   if (e.code === 'Escape') {
     if (!modal.classList.contains('hidden')) {
       closeArtworkModal();
       if (!isMobile && menuHiddenFlag) showResumeOverlay();
+    } else if (!inventoryOverlay.classList.contains('hidden')) {
+      // Esc also closes the inventory
+      hideInventory();
     }
   }
 });
@@ -528,7 +612,10 @@ function checkInteraction() {
     let obj = hits[0].object;
     while (obj.parent && !interactables.includes(obj)) obj = obj.parent;
     currentInteractable = obj;
-    promptEl.textContent = `[E] View "${obj.userData.title}"`;
+    const ud = obj.userData;
+    promptEl.textContent = ud.type === 'pickup'
+      ? `[E] Pick up "${ud.name}"`
+      : `[E] View "${ud.title}"`;
     promptEl.classList.remove('hidden');
   } else {
     currentInteractable = null;
@@ -564,6 +651,106 @@ document.getElementById('modal-close').addEventListener('click', () => {
 });
 
 // =============================================================
+// INVENTORY + INTERACT HANDLER
+// =============================================================
+// `inventory` is an array of item-data objects (same shape as COLLECTIBLES_DATA
+// entries). The inventory UI re-renders from this array whenever it changes.
+const inventory = [];
+let selectedInventoryIndex = -1;
+const inventoryOverlay = document.getElementById('inventory-overlay');
+const inventoryGrid    = document.getElementById('inventory-grid');
+const inventoryDetail  = document.getElementById('inventory-detail');
+const toastEl          = document.getElementById('toast');
+const INVENTORY_SLOTS  = 12; // visual grid slots (rows × cols defined in CSS)
+
+function renderInventory() {
+  inventoryGrid.innerHTML = '';
+  for (let i = 0; i < INVENTORY_SLOTS; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'inv-slot';
+    const item = inventory[i];
+    if (item) {
+      slot.classList.add('filled');
+      if (i === selectedInventoryIndex) slot.classList.add('selected');
+      slot.innerHTML = item.iconUrl
+        ? `<img src="${item.iconUrl}" alt="" /><span class="slot-name">${item.name}</span>`
+        : `<div style="width:60%;height:50%;background:#${(item.color ?? 0xffffff).toString(16).padStart(6,'0')};margin-bottom:0.3rem;border:1px solid #000;"></div><span class="slot-name">${item.name}</span>`;
+      slot.addEventListener('click', () => { selectedInventoryIndex = i; renderInventory(); });
+    }
+    inventoryGrid.appendChild(slot);
+  }
+  // Detail panel
+  const sel = inventory[selectedInventoryIndex];
+  if (sel) {
+    inventoryDetail.innerHTML = `<h3>${sel.name}</h3><p>${sel.description}</p>`;
+  } else {
+    inventoryDetail.innerHTML = `<p class="hint">Select an item to view its description.</p>`;
+  }
+}
+
+function showInventory() {
+  renderInventory();
+  inventoryOverlay.classList.remove('hidden');
+  if (controls.isLocked) controls.unlock();
+}
+function hideInventory() {
+  inventoryOverlay.classList.add('hidden');
+  if (!isMobile && menuHiddenFlag) controls.lock();
+}
+function toggleInventory() {
+  if (inventoryOverlay.classList.contains('hidden')) showInventory();
+  else hideInventory();
+}
+renderInventory(); // initial empty grid
+
+function showToast(message, duration = 1800) {
+  toastEl.textContent = message;
+  toastEl.classList.remove('hidden');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toastEl.classList.add('hidden'), duration);
+}
+
+function pickupCollectible(obj) {
+  const data = obj.userData;
+  inventory.push({
+    id: data.id,
+    name: data.name,
+    description: data.description,
+    iconUrl: data.iconUrl,
+    color: data.color,
+  });
+  // Remove from world
+  if (obj.parent) obj.parent.remove(obj);
+  const idx = interactables.indexOf(obj);
+  if (idx >= 0) interactables.splice(idx, 1);
+  currentInteractable = null;
+  promptEl.classList.add('hidden');
+
+  showToast(`Picked up: ${data.name}`);
+  renderInventory();
+}
+
+// Context-aware E handler.
+function handleInteract() {
+  // If inventory is open, E closes it
+  if (!inventoryOverlay.classList.contains('hidden')) {
+    hideInventory();
+    return;
+  }
+  // If the modal is open, E does nothing (Enter/Esc handle close)
+  if (!modal.classList.contains('hidden')) return;
+
+  if (currentInteractable) {
+    const data = currentInteractable.userData;
+    if (data.type === 'pickup')      pickupCollectible(currentInteractable);
+    else                              openArtworkModal(data);
+  } else {
+    // Nothing to interact with → open inventory
+    toggleInventory();
+  }
+}
+
+// =============================================================
 // 8. RESUME OVERLAY + START MENU
 // =============================================================
 const resumeOverlay = document.getElementById('resume-overlay');
@@ -592,11 +779,21 @@ function startExperience() {
 startBtn.addEventListener('click', startExperience);
 
 // =============================================================
-// MOVEMENT WITH RAYCAST COLLISIONS
+// MOVEMENT — walking, crouching, sprinting, jumping
 // =============================================================
-const PLAYER_HEIGHT = 1.7;
-const PLAYER_RADIUS = 0.4;
-const SPEED         = 4.0;
+const PLAYER_HEIGHT   = 1.7;   // standing eye height
+const CROUCH_HEIGHT   = 1.0;   // crouched eye height
+const PLAYER_RADIUS   = 0.4;
+const WALK_SPEED      = 4.0;
+const SNEAK_SPEED     = 1.8;
+const SPRINT_SPEED    = 7.0;
+const JUMP_VELOCITY   = 6.5;   // initial upward velocity on jump
+const GRAVITY         = 22.0;  // m/s² — Earth is ~9.8, but games feel
+                                // better with snappier (heavier) gravity.
+
+let playerVy      = 0;
+let isGrounded    = true;
+let currentEyeHeight = PLAYER_HEIGHT; // eased toward target each frame
 
 const _forward = new THREE.Vector3();
 const _right   = new THREE.Vector3();
@@ -614,6 +811,7 @@ function updateMovement(dt) {
   const active = isMobile ? menuHiddenFlag : controls.isLocked;
   if (!active) return;
 
+  // ---- Horizontal input ------------------------------------------------
   _forward.set(0, 0, -1).applyQuaternion(camera.quaternion);
   _forward.y = 0; _forward.normalize();
   _right.set(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -627,32 +825,53 @@ function updateMovement(dt) {
   inputX += joyVec.x;
   inputZ += joyVec.y;
 
-  if (inputX === 0 && inputZ === 0) {
-    camera.position.y = PLAYER_HEIGHT;
-    return;
-  }
+  // ---- Speed selection: shift > Q > walk ------------------------------
+  const sneaking = keys['ShiftLeft'] || keys['ShiftRight'];
+  const sprinting = keys['KeyQ'] && !sneaking;
+  let speed = WALK_SPEED;
+  if (sneaking)       speed = SNEAK_SPEED;
+  else if (sprinting) speed = SPRINT_SPEED;
 
-  _move.set(0, 0, 0)
-    .addScaledVector(_forward, inputZ)
-    .addScaledVector(_right,   inputX);
-  if (_move.lengthSq() > 1) _move.normalize();
+  // ---- Horizontal movement with axis-separated collision --------------
+  if (inputX !== 0 || inputZ !== 0) {
+    _move.set(0, 0, 0)
+      .addScaledVector(_forward, inputZ)
+      .addScaledVector(_right,   inputX);
+    if (_move.lengthSq() > 1) _move.normalize();
 
-  const distance = SPEED * dt;
+    const distance = speed * dt;
 
-  if (Math.abs(_move.x) > 1e-4) {
-    const dir = new THREE.Vector3(Math.sign(_move.x), 0, 0);
-    if (canMove(dir, Math.abs(_move.x) * distance)) {
-      camera.position.x += _move.x * distance;
+    if (Math.abs(_move.x) > 1e-4) {
+      const dir = new THREE.Vector3(Math.sign(_move.x), 0, 0);
+      if (canMove(dir, Math.abs(_move.x) * distance)) {
+        camera.position.x += _move.x * distance;
+      }
+    }
+    if (Math.abs(_move.z) > 1e-4) {
+      const dir = new THREE.Vector3(0, 0, Math.sign(_move.z));
+      if (canMove(dir, Math.abs(_move.z) * distance)) {
+        camera.position.z += _move.z * distance;
+      }
     }
   }
-  if (Math.abs(_move.z) > 1e-4) {
-    const dir = new THREE.Vector3(0, 0, Math.sign(_move.z));
-    if (canMove(dir, Math.abs(_move.z) * distance)) {
-      camera.position.z += _move.z * distance;
-    }
-  }
 
-  camera.position.y = PLAYER_HEIGHT;
+  // ---- Vertical: ease toward standing/crouch height + apply gravity ---
+  const targetEye = sneaking ? CROUCH_HEIGHT : PLAYER_HEIGHT;
+  // Frame-rate-independent smoothing toward target eye height
+  currentEyeHeight += (targetEye - currentEyeHeight) * (1 - Math.exp(-dt * 10));
+
+  // Gravity + jump physics
+  playerVy -= GRAVITY * dt;
+  camera.position.y += playerVy * dt;
+
+  // Ground check — the "floor" is wherever currentEyeHeight ends up.
+  if (camera.position.y <= currentEyeHeight) {
+    camera.position.y = currentEyeHeight;
+    playerVy = 0;
+    isGrounded = true;
+  } else {
+    isGrounded = false;
+  }
 }
 
 // =============================================================
@@ -664,7 +883,14 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.1);
   updateMovement(dt);
   checkInteraction();
-  scene.traverse(o => { if (o.userData && o.userData.rotates) o.rotation.y += dt * 0.4; });
+
+  const t = performance.now() * 0.002;
+  scene.traverse(o => {
+    if (!o.userData) return;
+    if (o.userData.rotates) o.rotation.y += dt * 0.4;
+    if (o.userData.bobs)    o.position.y = (o.userData.bobBase ?? 1.0) + Math.sin(t) * 0.06;
+  });
+
   renderer.render(scene, camera);
 }
 animate();

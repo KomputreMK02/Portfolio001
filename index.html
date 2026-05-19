@@ -24,7 +24,11 @@
        until the LoadingManager reports 100%. -->
   <div id="menu" class="overlay">
     <div class="menu-inner">
-      <h1 class="title">YOUR&nbsp;NAME</h1>
+      <!-- Drop a title image at ./assets/title.png to replace the text. -->
+      <img id="title-image" class="title-image"
+           src="./assets/title.png" alt=""
+           onerror="this.style.display='none'; document.getElementById('title-fallback').style.display='block';" />
+      <h1 id="title-fallback" class="title" style="display:none;">YOUR&nbsp;NAME</h1>
       <p class="subtitle">An interactive portfolio</p>
 
       <div class="loading">
@@ -36,7 +40,18 @@
       <p class="hint">Press <kbd>Enter</kbd> or click Start</p>
 
       <div class="controls-hint">
-        <div><strong>WASD</strong> move &nbsp;·&nbsp; <strong>Mouse</strong> look &nbsp;·&nbsp; <strong>E</strong> interact &nbsp;·&nbsp; <strong>Esc</strong> menu</div>
+        <div>
+          <strong>WASD</strong> move &nbsp;·&nbsp;
+          <strong>Mouse</strong> look &nbsp;·&nbsp;
+          <strong>Space</strong> jump &nbsp;·&nbsp;
+          <strong>Shift</strong> sneak &nbsp;·&nbsp;
+          <strong>Q</strong> sprint
+        </div>
+        <div style="margin-top:0.4rem;">
+          <strong>E</strong> interact / inventory &nbsp;·&nbsp;
+          <strong>Tab</strong> inventory &nbsp;·&nbsp;
+          <strong>Esc</strong> pause
+        </div>
       </div>
     </div>
   </div>
@@ -72,6 +87,21 @@
       <p id="modal-description"></p>
     </div>
   </div>
+
+  <!-- ============ INVENTORY OVERLAY ============ -->
+  <div id="inventory-overlay" class="overlay hidden">
+    <div class="menu-inner inventory-card">
+      <h2 class="inv-title">INVENTORY</h2>
+      <div id="inventory-grid" class="inventory-grid"></div>
+      <div id="inventory-detail" class="inventory-detail">
+        <p class="hint">Select an item to view its description.</p>
+      </div>
+      <p class="hint">Press <kbd>E</kbd> or <kbd>Tab</kbd> to close</p>
+    </div>
+  </div>
+
+  <!-- ============ TOAST (pickup notifications) ============ -->
+  <div id="toast" class="hidden"></div>
 
   <!-- ============ MOBILE TOUCH CONTROLS ============ -->
   <!-- Hidden by default; shown when a touch device is detected. -->
