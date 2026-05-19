@@ -1,3 +1,32 @@
+/* ============================================================
+   UI TEXTURES
+   ------------------------------------------------------------
+   Drop PNG files in ./assets/ui/ and uncomment the matching
+   variable below to skin that part of the interface. Each var
+   is a full `background` shorthand value, so you can also use
+   CSS gradients, colors, or layered backgrounds.
+
+   Suggested file sizes — these are upscaled with nearest-neighbor
+   so designs should be intentionally low-res for the PS2 vibe:
+     menu-bg.png        full screen (e.g. 1920×1080 @ 1× or
+                        smaller for chunky look)
+     card-bg.png        ~ 540×400 (panel containing buttons)
+     button.png         ~ 240×60
+     slot.png           ~ 96×96 (square)
+     slot-filled.png    ~ 96×96 (square, brighter / different frame)
+     prompt-bg.png      ~ 480×60 (the "[E] View …" pill)
+============================================================ */
+:root {
+  /* Uncomment one or more of these to enable the texture: */
+
+  /* --ui-menu-bg:    url('./assets/ui/menu-bg.png') center/cover no-repeat; */
+  /* --ui-card-bg:    url('./assets/ui/card-bg.png') center/100% 100% no-repeat; */
+  /* --ui-button-bg:  url('./assets/ui/button.png') center/100% 100% no-repeat; */
+  /* --ui-slot-bg:        url('./assets/ui/slot.png') center/100% 100% no-repeat; */
+  /* --ui-slot-filled-bg: url('./assets/ui/slot-filled.png') center/100% 100% no-repeat; */
+  /* --ui-prompt-bg:  url('./assets/ui/prompt-bg.png') center/100% 100% no-repeat; */
+}
+
 /* ============ Reset / base ============ */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: #000; color: #eee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
@@ -19,7 +48,7 @@ canvas#scene {
 .overlay {
   position: fixed; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse at center, #1a1a1a 0%, #000 100%);
+  background: var(--ui-menu-bg, radial-gradient(ellipse at center, #1a1a1a 0%, #000 100%));
   z-index: 100;
   animation: fadeIn 0.4s ease;
 }
@@ -31,6 +60,7 @@ canvas#scene {
   text-align: center;
   padding: 2rem;
   max-width: 540px;
+  background: var(--ui-card-bg, transparent);
 }
 
 .title {
@@ -83,7 +113,7 @@ canvas#scene {
 }
 
 .btn {
-  background: transparent;
+  background: var(--ui-button-bg, transparent);
   border: 1px solid #fff;
   color: #fff;
   padding: 0.9rem 3rem;
@@ -96,8 +126,10 @@ canvas#scene {
 }
 
 .btn:hover:not(:disabled) {
-  background: #fff;
-  color: #000;
+  /* Defaults give the classic "invert on hover" look. Override either
+     variable in :root to customize when using a texture. */
+  background: var(--ui-button-bg-hover, #fff);
+  color: var(--ui-button-color-hover, #000);
 }
 
 .btn:disabled {
@@ -156,7 +188,7 @@ kbd {
   bottom: 12%;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0,0,0,0.6);
+  background: var(--ui-prompt-bg, rgba(0,0,0,0.6));
   border: 1px solid rgba(255,255,255,0.2);
   padding: 0.6rem 1.2rem;
   font-size: 0.9rem;
@@ -232,7 +264,7 @@ kbd {
 
 .inv-slot {
   aspect-ratio: 1;
-  background: rgba(255,255,255,0.04);
+  background: var(--ui-slot-bg, rgba(255,255,255,0.04));
   border: 1px solid rgba(255,255,255,0.12);
   display: flex;
   align-items: center;
@@ -247,7 +279,7 @@ kbd {
 }
 
 .inv-slot.filled {
-  background: rgba(255,255,255,0.09);
+  background: var(--ui-slot-filled-bg, rgba(255,255,255,0.09));
   border-color: rgba(255,255,255,0.3);
 }
 

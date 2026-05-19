@@ -449,21 +449,18 @@ const keys = Object.create(null);
 document.addEventListener('keydown', (e) => {
   keys[e.code] = true;
 
-  // -- Title / resume screens -------------------------------------------
+  // ---------- Enter: title start / resume / close modal ----------------
   if (e.code === 'Enter') {
-    // Closing the artwork modal also accepts Enter (player-friendly).
     if (!modal.classList.contains('hidden')) {
       closeArtworkModal();
       if (!isMobile && menuHiddenFlag) controls.lock();
       e.preventDefault();
       return;
     }
-    // Start menu
     if (!menuHiddenFlag && !startBtn.disabled) {
       startExperience();
       return;
     }
-    // Resume overlay
     if (menuHiddenFlag && !resumeOverlay.classList.contains('hidden')) {
       hideResumeOverlay();
       controls.lock();
@@ -471,38 +468,46 @@ document.addEventListener('keydown', (e) => {
     }
   }
 
-  // -- In-game actions (only when the experience has started) -----------
+  // ---------- I: inventory toggle ---------------------------------------
+  // Works regardless of pointer-lock state so it can also close the
+  // inventory once it's open. Disabled while the artwork modal is showing.
+  if (e.code === 'KeyI' && menuHiddenFlag) {
+    if (modal.classList.contains('hidden')) {
+      e.preventDefault();
+      toggleInventory();
+    }
+    return;
+  }
+
+  // ---------- Esc: close modal / inventory / show resume overlay -------
+  if (e.code === 'Escape') {
+    if (!modal.classList.contains('hidden')) {
+      closeArtworkModal();
+      if (!isMobile && menuHiddenFlag) showResumeOverlay();
+      return;
+    }
+    if (!inventoryOverlay.classList.contains('hidden')) {
+      hideInventory();
+      return;
+    }
+    // Otherwise: Chrome already released pointer lock, the unlock event
+    // listener will surface the resume overlay.
+  }
+
+  // ---------- In-game actions (require pointer lock / mobile started) --
   const inGame = isMobile ? menuHiddenFlag : controls.isLocked;
   if (!inGame) return;
 
-  // E = context interact / fallback to inventory
+  // E = context interact (artwork or pickup)
   if (e.code === 'KeyE') {
     handleInteract();
     e.preventDefault();
   }
 
-  // Tab = always toggle inventory
-  if (e.code === 'Tab') {
-    e.preventDefault();
-    toggleInventory();
-  }
-
-  // Space = jump (only when on the ground)
+  // Space = jump
   if (e.code === 'Space') {
     e.preventDefault();
     if (isGrounded) playerVy = JUMP_VELOCITY;
-  }
-
-  // Esc closes the artwork modal — and Chrome auto-releases pointer lock,
-  // so we surface the resume overlay (Chrome blocks immediate re-locking).
-  if (e.code === 'Escape') {
-    if (!modal.classList.contains('hidden')) {
-      closeArtworkModal();
-      if (!isMobile && menuHiddenFlag) showResumeOverlay();
-    } else if (!inventoryOverlay.classList.contains('hidden')) {
-      // Esc also closes the inventory
-      hideInventory();
-    }
   }
 });
 document.addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -730,24 +735,15 @@ function pickupCollectible(obj) {
   renderInventory();
 }
 
-// Context-aware E handler.
+// E = pure context interact. Inventory is now bound to I exclusively.
 function handleInteract() {
-  // If inventory is open, E closes it
-  if (!inventoryOverlay.classList.contains('hidden')) {
-    hideInventory();
-    return;
-  }
-  // If the modal is open, E does nothing (Enter/Esc handle close)
   if (!modal.classList.contains('hidden')) return;
+  if (!inventoryOverlay.classList.contains('hidden')) return;
+  if (!currentInteractable) return;
 
-  if (currentInteractable) {
-    const data = currentInteractable.userData;
-    if (data.type === 'pickup')      pickupCollectible(currentInteractable);
-    else                              openArtworkModal(data);
-  } else {
-    // Nothing to interact with → open inventory
-    toggleInventory();
-  }
+  const data = currentInteractable.userData;
+  if (data.type === 'pickup') pickupCollectible(currentInteractable);
+  else                         openArtworkModal(data);
 }
 
 // =============================================================
@@ -765,7 +761,13 @@ resumeButton.addEventListener('click', () => {
 });
 
 controls.addEventListener('unlock', () => {
-  if (menuHiddenFlag && modal.classList.contains('hidden')) showResumeOverlay();
+  // Don't surface the resume overlay if the unlock was caused by opening
+  // the inventory or modal — those have their own UI to return from.
+  if (menuHiddenFlag
+      && modal.classList.contains('hidden')
+      && inventoryOverlay.classList.contains('hidden')) {
+    showResumeOverlay();
+  }
 });
 controls.addEventListener('lock', () => { hideResumeOverlay(); });
 
