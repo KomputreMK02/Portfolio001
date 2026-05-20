@@ -260,21 +260,21 @@ const ARTWORK_DATA = [
   },
   {
     anchor: 'frame_02',
-    type: 'frame_02',
+    type: 'image',
     src: 'assets/frame_02.jpg',
     title: 'Project Two',
     description: 'Another image work, hung wherever frame_02 is in your room.',
   },
   {
     anchor: 'frame_03',
-    type: 'frame_03',
+    type: 'video',
     src: 'assets/frame_03.mp4',
     title: 'Project Three',
     description: 'A third image piece. Move the empty in Blender to relocate.',
   },
   {
     anchor: 'frame_04',
-    type: 'frame_04',
+    type: 'video',
     src: 'assets/frame_04.mp4',
     title: 'Showreel',
     description: 'A looping video piece. Use H.264 mp4 for best browser support.',
@@ -288,7 +288,7 @@ const ARTWORK_DATA = [
 
     //To load your own .glb model on this pedestal, uncomment and tweak:
     modelUrl:       './assets/skull.glb',
-    scale:          1.0,         // 0.5 = half size, 2 = double size
+    scale:          0.35,         // 0.5 = half size, 2 = double size
     modelY:         1.35,        // y position above the anchor — pedestal top ≈ 1.35
     modelRotationY: 0,           // facing direction in radians: π/2 ≈ 1.57 = quarter turn
     rotates:        true,        // false to keep the sculpture static
