@@ -288,8 +288,8 @@ const ARTWORK_DATA = [
 
     //To load your own .glb model on this pedestal, uncomment and tweak:
     modelUrl:       './assets/skull.glb',
-    scale:          0.35,         // 0.5 = half size, 2 = double size
-    modelY:         1.35,        // y position above the anchor — pedestal top ≈ 1.35
+    scale:          0.25,         // 0.5 = half size, 2 = double size
+    modelY:         1.5,        // y position above the anchor — pedestal top ≈ 1.35
     modelRotationY: 0,           // facing direction in radians: π/2 ≈ 1.57 = quarter turn
     rotates:        true,        // false to keep the sculpture static
   },
