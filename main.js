@@ -283,8 +283,15 @@ const ARTWORK_DATA = [
     anchor: 'pedestal_01',
     type: 'sculpture',
     title: '3D Sculpture',
-    description: 'Placeholder torus knot. Swap with a GLTFLoader-loaded model later.',
+    description: 'Placeholder torus knot. Set modelUrl to load your own .glb.',
     color: 0xff6a00,
+
+    To load your own .glb model on this pedestal, uncomment and tweak:
+    modelUrl:       './assets/skull.glb',
+    scale:          1.0,         // 0.5 = half size, 2 = double size
+    modelY:         1.35,        // y position above the anchor — pedestal top ≈ 1.35
+    modelRotationY: 0,           // facing direction in radians: π/2 ≈ 1.57 = quarter turn
+    rotates:        true,        // false to keep the sculpture static
   },
 ];
 
@@ -410,8 +417,16 @@ function addFramedVideo(anchor, { src, title, description }) {
   interactables.push(group);
 }
 
-function addPedestalSculpture(anchor, { title, description, color = 0xff6a00 }) {
-  // Pedestal (visible) + collider so you can't walk through it
+function addPedestalSculpture(anchor, {
+  title, description,
+  color = 0xff6a00,
+  modelUrl,                  // optional: path to a .glb to load on the pedestal
+  scale = 1.0,               // size multiplier for the loaded model
+  modelY = 1.35,             // height above the anchor — top of pedestal ≈ 1.35
+  modelRotationY = 0,        // initial facing direction (radians)
+  rotates = true,            // slowly spin on its pedestal
+}) {
+  // ---- Pedestal (always rendered, regardless of what stands on it) ----
   const pedestal = new THREE.Mesh(
     new THREE.CylinderGeometry(0.4, 0.4, 1, 24),
     ps1Material(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4 }))
@@ -428,16 +443,44 @@ function addPedestalSculpture(anchor, { title, description, color = 0xff6a00 }) 
   anchor.add(pedCollider);
   collidables.push(pedCollider);
 
-  // Sculpture (placeholder torus knot — swap for a GLTFLoader model later)
-  const sculpture = new THREE.Mesh(
-    new THREE.TorusKnotGeometry(0.25, 0.08, 128, 16),
-    ps1Material(new THREE.MeshStandardMaterial({ color, metalness: 0.7, roughness: 0.25 }))
-  );
-  sculpture.position.y = 1.35;
-  sculpture.castShadow = true;
-  sculpture.userData = { title, description, type: 'sculpture', rotates: true };
-  anchor.add(sculpture);
-  interactables.push(sculpture);
+  // ---- Sculpture: load .glb if a URL is given, else placeholder ----
+  if (modelUrl) {
+    gltfLoader.load(
+      modelUrl,
+      (gltf) => {
+        const model = gltf.scene;
+        model.scale.setScalar(scale);
+        model.position.y = modelY;
+        model.rotation.y = modelRotationY;
+
+        // Shadows + PS1 vibe on every mesh inside the loaded model
+        model.traverse(node => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+            ps1MeshMaterials(node);
+          }
+        });
+
+        model.userData = { title, description, type: 'sculpture', rotates };
+        anchor.add(model);
+        interactables.push(model);
+      },
+      undefined,
+      (err) => console.warn(`[sculpture] Failed to load ${modelUrl}:`, err)
+    );
+  } else {
+    // Placeholder torus knot — swap with a real .glb by setting modelUrl above
+    const sculpture = new THREE.Mesh(
+      new THREE.TorusKnotGeometry(0.25, 0.08, 128, 16),
+      ps1Material(new THREE.MeshStandardMaterial({ color, metalness: 0.7, roughness: 0.25 }))
+    );
+    sculpture.position.y = modelY;
+    sculpture.castShadow = true;
+    sculpture.userData = { title, description, type: 'sculpture', rotates };
+    anchor.add(sculpture);
+    interactables.push(sculpture);
+  }
 }
 
 // =============================================================
