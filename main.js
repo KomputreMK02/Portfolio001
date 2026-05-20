@@ -286,7 +286,7 @@ const ARTWORK_DATA = [
     description: 'Placeholder torus knot. Set modelUrl to load your own .glb.',
     color: 0xff6a00,
 
-    To load your own .glb model on this pedestal, uncomment and tweak:
+    //To load your own .glb model on this pedestal, uncomment and tweak:
     modelUrl:       './assets/skull.glb',
     scale:          1.0,         // 0.5 = half size, 2 = double size
     modelY:         1.35,        // y position above the anchor — pedestal top ≈ 1.35
