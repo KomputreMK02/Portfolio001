@@ -282,8 +282,8 @@ const ARTWORK_DATA = [
   {
     anchor: 'pedestal_01',
     type: 'sculpture',
-    title: '3D Sculpture',
-    description: 'a 3D sculpted skull',
+    title: 'Demon Skull',
+    description: 'freehanded digital sculpt',
     color: 0xff6a00,
 
     //To load your own .glb model on this pedestal, uncomment and tweak:
