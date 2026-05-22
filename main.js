@@ -363,30 +363,59 @@ function attachArtworks() {
   }
 }
 
-function addFramedImage(anchor, { src, title, description }) {
-  const tex = new THREE.TextureLoader(manager).load(src);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  ps1Texture(tex);
+// Target size for the LONGEST side of the artwork (in meters). Frames keep
+// this dimension constant and let the other side flex to match the media's
+// aspect ratio — so a 16:9 video is wider than a 1:1 photo, but they share
+// the same "size on the wall" feeling.
+const FRAME_MAX_SIDE   = 2.0;
+const FRAME_BORDER     = 0.10;   // thickness of the dark border on every side
+const FRAME_DEPTH      = 0.08;   // how far the frame box sticks out from the wall
+const VIDEO_MAX_SIDE   = 2.2;    // videos a touch larger than photos
 
-  const frame = new THREE.Mesh(
-    new THREE.BoxGeometry(2.2, 1.7, 0.08),
-    ps1Material(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 }))
-  );
-  const art = new THREE.Mesh(
-    new THREE.PlaneGeometry(2, 1.5),
-    ps1Material(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 }))
-  );
-  art.position.z = 0.05;
-
-  const group = new THREE.Group();
-  group.add(frame);
-  group.add(art);
-  group.userData = { title, description, type: 'image', src };
-  anchor.add(group);            // inherits anchor's world transform
-  interactables.push(group);
+// Compute (width, height) that fit inside a `maxSide × maxSide` box while
+// preserving the source aspect ratio.
+function sizeForAspect(aspect, maxSide) {
+  if (aspect >= 1) return { w: maxSide, h: maxSide / aspect };
+  return            { w: maxSide * aspect, h: maxSide };
 }
 
-function addFramedVideo(anchor, { src, title, description }) {
+function buildFrameMeshes(group, tex, aspect, maxSide, { useBasic = false } = {}) {
+  const { w, h } = sizeForAspect(aspect, maxSide);
+
+  const frame = new THREE.Mesh(
+    new THREE.BoxGeometry(w + FRAME_BORDER * 2, h + FRAME_BORDER * 2, FRAME_DEPTH),
+    ps1Material(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 }))
+  );
+
+  const artMat = useBasic
+    ? new THREE.MeshBasicMaterial({ map: tex })
+    : ps1Material(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 }));
+  const art = new THREE.Mesh(new THREE.PlaneGeometry(w, h), artMat);
+  art.position.z = FRAME_DEPTH / 2 + 0.001; // sit just in front of the frame box
+
+  group.add(frame);
+  group.add(art);
+}
+
+function addFramedImage(anchor, { src, title, description, maxSide = FRAME_MAX_SIDE }) {
+  // Add the group up-front so the anchor transform and interactable list are
+  // wired immediately; meshes get filled in once the texture's dimensions
+  // are known.
+  const group = new THREE.Group();
+  group.userData = { title, description, type: 'image', src };
+  anchor.add(group);
+  interactables.push(group);
+
+  new THREE.TextureLoader(manager).load(src, (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    ps1Texture(tex);
+    const aspect = (tex.image.naturalWidth || tex.image.width) /
+                   (tex.image.naturalHeight || tex.image.height);
+    buildFrameMeshes(group, tex, aspect, maxSide);
+  });
+}
+
+function addFramedVideo(anchor, { src, title, description, maxSide = VIDEO_MAX_SIDE }) {
   const video = document.createElement('video');
   video.src = src;
   video.loop = true;
@@ -395,26 +424,30 @@ function addFramedVideo(anchor, { src, title, description }) {
   video.crossOrigin = 'anonymous';
   video.play().catch(() => { /* will play after user gesture */ });
 
-  const tex = new THREE.VideoTexture(video);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  ps1Texture(tex);
-
-  const frame = new THREE.Mesh(
-    new THREE.BoxGeometry(2.4, 1.5, 0.08),
-    ps1Material(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 }))
-  );
-  const screen = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.2, 1.3),
-    new THREE.MeshBasicMaterial({ map: tex }) // BasicMaterial = no jitter shader, that's fine
-  );
-  screen.position.z = 0.05;
-
   const group = new THREE.Group();
-  group.add(frame);
-  group.add(screen);
   group.userData = { title, description, type: 'video', src, video };
   anchor.add(group);
   interactables.push(group);
+
+  // Hook into the LoadingManager so the Start button waits for the metadata
+  // before the user can enter the scene (otherwise frames would pop in late).
+  manager.itemStart(src);
+
+  const build = () => {
+    const aspect = (video.videoWidth || 16) / (video.videoHeight || 9);
+    const tex = new THREE.VideoTexture(video);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    ps1Texture(tex);
+    // useBasic: VideoTextures on MeshBasicMaterial skip the PS1 vertex jitter
+    // shader, which is what the original code did and keeps video playback
+    // smooth.
+    buildFrameMeshes(group, tex, aspect, maxSide, { useBasic: true });
+    manager.itemEnd(src);
+  };
+
+  if (video.readyState >= 1) build();
+  else video.addEventListener('loadedmetadata', build, { once: true });
+  video.addEventListener('error', () => manager.itemError(src), { once: true });
 }
 
 function addPedestalSculpture(anchor, {
