@@ -564,7 +564,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  // ---------- Esc: close modal / inventory / show resume overlay -------
+  // ---------- Esc: close modal / inventory / resume from pause ---------
   if (e.code === 'Escape') {
     if (!modal.classList.contains('hidden')) {
       closeArtworkModal();
@@ -573,6 +573,17 @@ document.addEventListener('keydown', (e) => {
     }
     if (!inventoryOverlay.classList.contains('hidden')) {
       hideInventory();
+      return;
+    }
+    if (menuHiddenFlag && !resumeOverlay.classList.contains('hidden')) {
+      // Pressing Escape from the pause menu closes it and re-acquires
+      // pointer lock. (Chrome enforces ~1.25s cooldown after Escape is
+      // pressed before allowing re-lock, so this only works if a beat
+      // has passed since the user first hit Escape. If lock() silently
+      // fails, the overlay's "Click to resume" button is always there
+      // as a fallback.)
+      hideResumeOverlay();
+      if (!isMobile) controls.lock();
       return;
     }
     // Otherwise: Chrome already released pointer lock, the unlock event
@@ -871,67 +882,104 @@ startBtn.addEventListener('click', startExperience);
 // =============================================================
 // SOUND
 // =============================================================
+// Built on the Web Audio API rather than <audio> elements:
+//   1. <audio loop> has an audible click at every loop boundary — Web
+//      Audio's AudioBufferSourceNode.loop is sample-accurate so the
+//      ambience can loop without you hearing the seam (provided your
+//      source file is already a clean loop with no leading/trailing
+//      silence).
+//   2. Everything routes through a single master gain node, which the
+//      volume slider in the pause menu writes to directly.
+//
 // Tweak these to taste:
 const AMBIENCE_VOLUME   = 0.5;
 const STEP_VOLUME       = 0.6;
 const RANDOM_VOLUME     = 0.7;
-const STEP_INTERVAL     = 0.45;   // seconds between footstep sounds while moving
-const RANDOM_MIN_GAP_S  = 5  * 60; // 5  minutes
-const RANDOM_MAX_GAP_S  = 20 * 60; // 20 minutes
+const STEP_INTERVAL     = 0.45;     // seconds between footsteps while moving
+const RANDOM_MIN_GAP_S  = 1  * 60;  //  1 minute
+const RANDOM_MAX_GAP_S  = 10 * 60;  // 10 minutes
+// Per-clip play probability. random_03 = lowest, as requested.
+const RANDOM_WEIGHTS    = [0.4, 0.4, 0.2];
 
-function loadAudio(path, { loop = false, volume = 1 } = {}) {
-  const a = new Audio(path);
-  a.loop = loop;
-  a.volume = volume;
-  a.preload = 'auto';
-  return a;
-}
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = audioCtx.createGain();
+masterGain.gain.value = 0.7;        // slider initial value (matches HTML)
+masterGain.connect(audioCtx.destination);
 
-// Ambience: single looping bed.
-const ambience = loadAudio('./assets/sounds/ambience_01.mp3', { loop: true, volume: AMBIENCE_VOLUME });
-
-// Footsteps: randomized order, never repeats the same clip twice in a row.
-const stepSounds = [
-  loadAudio('./assets/sounds/steps_01.mp3', { volume: STEP_VOLUME }),
-  loadAudio('./assets/sounds/steps_02.mp3', { volume: STEP_VOLUME }),
-  loadAudio('./assets/sounds/steps_03.mp3', { volume: STEP_VOLUME }),
-  loadAudio('./assets/sounds/steps_04.mp3', { volume: STEP_VOLUME }),
-];
+const audioBuffers = { ambience: null, steps: [], random: [] };
+let ambienceSource = null;
+let ambienceWantsStart = false;     // user pressed Start before buffer loaded
 let stepTimer = 0;
 let lastStepIndex = -1;
-
-// Random one-shots. Weights: random_01 and random_02 ≈ 40% each,
-// random_03 only 20% (rarest, as requested).
-const randomSounds = [
-  { audio: loadAudio('./assets/sounds/random_01.mp3', { volume: RANDOM_VOLUME }), weight: 0.4 },
-  { audio: loadAudio('./assets/sounds/random_02.mp3', { volume: RANDOM_VOLUME }), weight: 0.4 },
-  { audio: loadAudio('./assets/sounds/random_03.mp3', { volume: RANDOM_VOLUME }), weight: 0.2 },
-];
 let randomTimer = scheduleNextRandom();
 
+async function loadBuffer(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`fetch ${url}: ${res.status}`);
+  const ab = await res.arrayBuffer();
+  return new Promise((resolve, reject) =>
+    audioCtx.decodeAudioData(ab, resolve, reject)
+  );
+}
+
+(async function loadAllSounds() {
+  try {
+    audioBuffers.ambience = await loadBuffer('./assets/sounds/ambience_01.mp3');
+    audioBuffers.steps = await Promise.all([
+      loadBuffer('./assets/sounds/steps_01.mp3'),
+      loadBuffer('./assets/sounds/steps_02.mp3'),
+      loadBuffer('./assets/sounds/steps_03.mp3'),
+      loadBuffer('./assets/sounds/steps_04.mp3'),
+    ]);
+    audioBuffers.random = await Promise.all([
+      loadBuffer('./assets/sounds/random_01.mp3'),
+      loadBuffer('./assets/sounds/random_02.mp3'),
+      loadBuffer('./assets/sounds/random_03.mp3'),
+    ]);
+    console.log('[sound] all clips loaded');
+    console.log(`[sound] first random one-shot in ${(randomTimer/60).toFixed(1)} min`);
+    if (ambienceWantsStart) startAmbience(); // user clicked Start while loading
+  } catch (err) {
+    console.warn('[sound] failed to load:', err);
+  }
+})();
+
+function playBuffer(buf, gain = 1, loop = false) {
+  if (!buf) return null;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.loop = loop;
+  const g = audioCtx.createGain();
+  g.gain.value = gain;
+  src.connect(g).connect(masterGain);
+  src.start(0);
+  return src;
+}
+
 function startAmbience() {
-  // Some browsers reject a second .play() while the audio is in a weird
-  // intermediate state — swallow it, we'll retry on the next user gesture.
-  ambience.play().catch(() => {});
+  // AudioContext starts in 'suspended' state; the Start button click is
+  // the user gesture that lets us resume it.
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  ambienceWantsStart = true;
+  if (ambienceSource || !audioBuffers.ambience) return;
+  ambienceSource = playBuffer(audioBuffers.ambience, AMBIENCE_VOLUME, true);
+}
+
+function playStepSound() {
+  if (!audioBuffers.steps.length) return;
+  let idx;
+  do {
+    idx = Math.floor(Math.random() * audioBuffers.steps.length);
+  } while (idx === lastStepIndex && audioBuffers.steps.length > 1);
+  lastStepIndex = idx;
+  playBuffer(audioBuffers.steps[idx], STEP_VOLUME);
 }
 
 function tickFootsteps(dt, isMoving) {
-  if (!isMoving) {
-    // Reset the timer so the FIRST step lands as soon as the player
-    // starts moving (instead of waiting up to STEP_INTERVAL).
-    stepTimer = 0;
-    return;
-  }
+  if (!isMoving) { stepTimer = 0; return; }
   stepTimer -= dt;
   if (stepTimer <= 0) {
-    let idx;
-    do {
-      idx = Math.floor(Math.random() * stepSounds.length);
-    } while (idx === lastStepIndex && stepSounds.length > 1);
-    lastStepIndex = idx;
-    const s = stepSounds[idx];
-    try { s.currentTime = 0; } catch (e) {}
-    s.play().catch(() => {});
+    playStepSound();
     stepTimer = STEP_INTERVAL;
   }
 }
@@ -940,31 +988,29 @@ function scheduleNextRandom() {
   return RANDOM_MIN_GAP_S + Math.random() * (RANDOM_MAX_GAP_S - RANDOM_MIN_GAP_S);
 }
 
-function pickWeightedRandom() {
-  const total = randomSounds.reduce((s, r) => s + r.weight, 0);
+function pickWeightedRandomIndex() {
+  const total = RANDOM_WEIGHTS.reduce((s, w) => s + w, 0);
   let r = Math.random() * total;
-  for (const entry of randomSounds) {
-    r -= entry.weight;
-    if (r <= 0) return entry.audio;
+  for (let i = 0; i < RANDOM_WEIGHTS.length; i++) {
+    r -= RANDOM_WEIGHTS[i];
+    if (r <= 0) return i;
   }
-  return randomSounds[0].audio;
+  return RANDOM_WEIGHTS.length - 1;
 }
 
 function tickRandomSounds(dt) {
-  // Only count down once the user has actually entered the gallery, so the
-  // first random one-shot doesn't fire while the player is still on the
-  // title screen.
   if (!menuHiddenFlag) return;
+  if (!audioBuffers.random.length) return;
   randomTimer -= dt;
   if (randomTimer <= 0) {
-    const a = pickWeightedRandom();
-    try { a.currentTime = 0; } catch (e) {}
-    a.play().catch(() => {});
+    const idx = pickWeightedRandomIndex();
+    console.log(`[sound] playing random_0${idx+1}`);
+    playBuffer(audioBuffers.random[idx], RANDOM_VOLUME);
     randomTimer = scheduleNextRandom();
+    console.log(`[sound] next random in ${(randomTimer/60).toFixed(1)} min`);
   }
 }
 
-// Helper: are we currently producing horizontal movement input?
 function isPlayerMoving() {
   if (!menuHiddenFlag) return false;
   if (!isGrounded) return false; // no footsteps while airborne
@@ -976,6 +1022,15 @@ function isPlayerMoving() {
   ix += joyVec.x;
   iz += joyVec.y;
   return (ix !== 0 || iz !== 0);
+}
+
+// ----- Master volume slider in the pause menu -----
+const volumeSlider = document.getElementById('volume-slider');
+if (volumeSlider) {
+  masterGain.gain.value = volumeSlider.value / 100;
+  volumeSlider.addEventListener('input', () => {
+    masterGain.gain.value = volumeSlider.value / 100;
+  });
 }
 
 // =============================================================
@@ -1068,6 +1123,12 @@ function updateMovement(dt) {
   if (camera.position.y <= currentEyeHeight) {
     camera.position.y = currentEyeHeight;
     playerVy = 0;
+    if (!isGrounded) {
+      // Just landed — fire one random step sound, then delay the next
+      // walking step so they don't double up.
+      playStepSound();
+      stepTimer = STEP_INTERVAL;
+    }
     isGrounded = true;
   } else {
     isGrounded = false;

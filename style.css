@@ -392,3 +392,50 @@ kbd {
   pointer-events: auto;
   cursor: pointer;
 }
+
+/* ============ Volume slider (pause menu) ============ */
+.volume-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 2rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.volume-row label {
+  flex-shrink: 0;
+}
+.volume-row input[type="range"] {
+  flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+  height: 18px;
+}
+.volume-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  background: rgba(255,255,255,0.3);
+}
+.volume-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  margin-top: -5px;
+}
+.volume-row input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: rgba(255,255,255,0.3);
+}
+.volume-row input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  border: none;
+}
