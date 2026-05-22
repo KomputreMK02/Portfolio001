@@ -862,8 +862,121 @@ function startExperience() {
   document.getElementById('hud').classList.remove('hidden');
   menuHiddenFlag = true;
   if (!isMobile) controls.lock();
+  // Browser autoplay policies require a user gesture before audio can start
+  // — the Start button click is that gesture.
+  startAmbience();
 }
 startBtn.addEventListener('click', startExperience);
+
+// =============================================================
+// SOUND
+// =============================================================
+// Tweak these to taste:
+const AMBIENCE_VOLUME   = 0.5;
+const STEP_VOLUME       = 0.6;
+const RANDOM_VOLUME     = 0.7;
+const STEP_INTERVAL     = 0.45;   // seconds between footstep sounds while moving
+const RANDOM_MIN_GAP_S  = 5  * 60; // 5  minutes
+const RANDOM_MAX_GAP_S  = 20 * 60; // 20 minutes
+
+function loadAudio(path, { loop = false, volume = 1 } = {}) {
+  const a = new Audio(path);
+  a.loop = loop;
+  a.volume = volume;
+  a.preload = 'auto';
+  return a;
+}
+
+// Ambience: single looping bed.
+const ambience = loadAudio('./assets/sounds/ambience_01.mp3', { loop: true, volume: AMBIENCE_VOLUME });
+
+// Footsteps: randomized order, never repeats the same clip twice in a row.
+const stepSounds = [
+  loadAudio('./assets/sounds/steps_01.mp3', { volume: STEP_VOLUME }),
+  loadAudio('./assets/sounds/steps_02.mp3', { volume: STEP_VOLUME }),
+  loadAudio('./assets/sounds/steps_03.mp3', { volume: STEP_VOLUME }),
+  loadAudio('./assets/sounds/steps_04.mp3', { volume: STEP_VOLUME }),
+];
+let stepTimer = 0;
+let lastStepIndex = -1;
+
+// Random one-shots. Weights: random_01 and random_02 ≈ 40% each,
+// random_03 only 20% (rarest, as requested).
+const randomSounds = [
+  { audio: loadAudio('./assets/sounds/random_01.mp3', { volume: RANDOM_VOLUME }), weight: 0.4 },
+  { audio: loadAudio('./assets/sounds/random_02.mp3', { volume: RANDOM_VOLUME }), weight: 0.4 },
+  { audio: loadAudio('./assets/sounds/random_03.mp3', { volume: RANDOM_VOLUME }), weight: 0.2 },
+];
+let randomTimer = scheduleNextRandom();
+
+function startAmbience() {
+  // Some browsers reject a second .play() while the audio is in a weird
+  // intermediate state — swallow it, we'll retry on the next user gesture.
+  ambience.play().catch(() => {});
+}
+
+function tickFootsteps(dt, isMoving) {
+  if (!isMoving) {
+    // Reset the timer so the FIRST step lands as soon as the player
+    // starts moving (instead of waiting up to STEP_INTERVAL).
+    stepTimer = 0;
+    return;
+  }
+  stepTimer -= dt;
+  if (stepTimer <= 0) {
+    let idx;
+    do {
+      idx = Math.floor(Math.random() * stepSounds.length);
+    } while (idx === lastStepIndex && stepSounds.length > 1);
+    lastStepIndex = idx;
+    const s = stepSounds[idx];
+    try { s.currentTime = 0; } catch (e) {}
+    s.play().catch(() => {});
+    stepTimer = STEP_INTERVAL;
+  }
+}
+
+function scheduleNextRandom() {
+  return RANDOM_MIN_GAP_S + Math.random() * (RANDOM_MAX_GAP_S - RANDOM_MIN_GAP_S);
+}
+
+function pickWeightedRandom() {
+  const total = randomSounds.reduce((s, r) => s + r.weight, 0);
+  let r = Math.random() * total;
+  for (const entry of randomSounds) {
+    r -= entry.weight;
+    if (r <= 0) return entry.audio;
+  }
+  return randomSounds[0].audio;
+}
+
+function tickRandomSounds(dt) {
+  // Only count down once the user has actually entered the gallery, so the
+  // first random one-shot doesn't fire while the player is still on the
+  // title screen.
+  if (!menuHiddenFlag) return;
+  randomTimer -= dt;
+  if (randomTimer <= 0) {
+    const a = pickWeightedRandom();
+    try { a.currentTime = 0; } catch (e) {}
+    a.play().catch(() => {});
+    randomTimer = scheduleNextRandom();
+  }
+}
+
+// Helper: are we currently producing horizontal movement input?
+function isPlayerMoving() {
+  if (!menuHiddenFlag) return false;
+  if (!isGrounded) return false; // no footsteps while airborne
+  let ix = 0, iz = 0;
+  if (keys['KeyW']) iz += 1;
+  if (keys['KeyS']) iz -= 1;
+  if (keys['KeyA']) ix -= 1;
+  if (keys['KeyD']) ix += 1;
+  ix += joyVec.x;
+  iz += joyVec.y;
+  return (ix !== 0 || iz !== 0);
+}
 
 // =============================================================
 // MOVEMENT — walking, crouching, sprinting, jumping
@@ -970,6 +1083,8 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.1);
   updateMovement(dt);
   checkInteraction();
+  tickFootsteps(dt, isPlayerMoving());
+  tickRandomSounds(dt);
 
   const t = performance.now() * 0.002;
   scene.traverse(o => {
