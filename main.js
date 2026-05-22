@@ -566,6 +566,17 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
+  // ---------- E (while modal is open): close artwork modal -------------
+  // Handled here, BEFORE the in-game gate, because opening the modal
+  // releases pointer-lock — by the time this fires, controls.isLocked
+  // is false and the in-game branch below would never see it.
+  if (e.code === 'KeyE' && !modal.classList.contains('hidden')) {
+    closeArtworkModal();
+    if (!isMobile && menuHiddenFlag) controls.lock();
+    e.preventDefault();
+    return;
+  }
+
   // ---------- Esc: close modal / inventory / show resume overlay ------
   if (e.code === 'Escape') {
     if (!modal.classList.contains('hidden')) {
