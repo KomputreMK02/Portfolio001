@@ -566,7 +566,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  // ---------- Esc: close modal / inventory / resume from pause ---------
+  // ---------- Esc: close modal / inventory / show resume overlay ------
   if (e.code === 'Escape') {
     if (!modal.classList.contains('hidden')) {
       closeArtworkModal();
@@ -577,20 +577,9 @@ document.addEventListener('keydown', (e) => {
       hideInventory();
       return;
     }
-    if (menuHiddenFlag && !resumeOverlay.classList.contains('hidden')) {
-      // Resume from pause via Escape. Don't hide the overlay synchronously
-      // — Chrome enforces a ~1.25s cooldown after the original Escape that
-      // released pointer-lock, and inside that window controls.lock()
-      // fails silently. Instead, request the lock and let the 'lock' event
-      // listener hide the overlay only when the lock actually engages.
-      // If the request is rejected (cooldown), the overlay stays visible
-      // and the "Click to resume" button is always a fresh user gesture.
-      if (isMobile) hideResumeOverlay();
-      else          controls.lock();
-      return;
-    }
     // Otherwise: Chrome already released pointer lock, the unlock event
-    // listener will surface the resume overlay.
+    // listener will surface the resume overlay — and the user resumes
+    // from there with Enter or by clicking the button.
   }
 
   // ---------- In-game actions (require pointer lock / mobile started) --
