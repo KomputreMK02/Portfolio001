@@ -33,7 +33,11 @@ const PIXELATION = 3;
 
 // Snap vertices to a grid of (N × N) positions in clip space. Lower N =
 // more wobble. Set to 0 to disable.
-const PS1_JITTER = 160;
+//   160 = strong PS1 wobble (can collapse small geometry at sharp angles)
+//   320 = noticeable wobble, safer for small props
+//   480 = subtle, gentle PS2 character
+//   0   = off
+const PS1_JITTER = 480;
 
 // Apply NEAREST filtering to all textures (no bilinear smoothing).
 const PIXEL_TEXTURES = true;
@@ -382,16 +386,21 @@ function sizeForAspect(aspect, maxSide) {
 function buildFrameMeshes(group, tex, aspect, maxSide, { useBasic = false } = {}) {
   const { w, h } = sizeForAspect(aspect, maxSide);
 
+  // The dark frame box keeps the PS1 vertex jitter for character.
   const frame = new THREE.Mesh(
     new THREE.BoxGeometry(w + FRAME_BORDER * 2, h + FRAME_BORDER * 2, FRAME_DEPTH),
     ps1Material(new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 }))
   );
 
+  // The art plane itself is EXEMPT from the vertex jitter — otherwise the
+  // four corners can snap together at sharp angles and the frame visually
+  // collapses to nothing. Bump it a bit further in front of the box so a
+  // little wobble on the frame can't push the art behind it.
   const artMat = useBasic
     ? new THREE.MeshBasicMaterial({ map: tex })
-    : ps1Material(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 }));
+    : new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 });
   const art = new THREE.Mesh(new THREE.PlaneGeometry(w, h), artMat);
-  art.position.z = FRAME_DEPTH / 2 + 0.001; // sit just in front of the frame box
+  art.position.z = FRAME_DEPTH / 2 + 0.01;
 
   group.add(frame);
   group.add(art);
