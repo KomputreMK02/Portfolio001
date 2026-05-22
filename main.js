@@ -547,8 +547,10 @@ document.addEventListener('keydown', (e) => {
       return;
     }
     if (menuHiddenFlag && !resumeOverlay.classList.contains('hidden')) {
-      hideResumeOverlay();
-      controls.lock();
+      // 'lock' event listener hides the overlay on success; if Chrome
+      // blocks the request, the overlay stays so the user has a fallback.
+      if (isMobile) hideResumeOverlay();
+      else          controls.lock();
       return;
     }
   }
@@ -576,14 +578,15 @@ document.addEventListener('keydown', (e) => {
       return;
     }
     if (menuHiddenFlag && !resumeOverlay.classList.contains('hidden')) {
-      // Pressing Escape from the pause menu closes it and re-acquires
-      // pointer lock. (Chrome enforces ~1.25s cooldown after Escape is
-      // pressed before allowing re-lock, so this only works if a beat
-      // has passed since the user first hit Escape. If lock() silently
-      // fails, the overlay's "Click to resume" button is always there
-      // as a fallback.)
-      hideResumeOverlay();
-      if (!isMobile) controls.lock();
+      // Resume from pause via Escape. Don't hide the overlay synchronously
+      // — Chrome enforces a ~1.25s cooldown after the original Escape that
+      // released pointer-lock, and inside that window controls.lock()
+      // fails silently. Instead, request the lock and let the 'lock' event
+      // listener hide the overlay only when the lock actually engages.
+      // If the request is rejected (cooldown), the overlay stays visible
+      // and the "Click to resume" button is always a fresh user gesture.
+      if (isMobile) hideResumeOverlay();
+      else          controls.lock();
       return;
     }
     // Otherwise: Chrome already released pointer lock, the unlock event
@@ -852,8 +855,11 @@ function showResumeOverlay() { resumeOverlay.classList.remove('hidden'); }
 function hideResumeOverlay() { resumeOverlay.classList.add('hidden'); }
 
 resumeButton.addEventListener('click', () => {
-  hideResumeOverlay();
-  controls.lock();
+  // Clicks are fresh user gestures (no Escape-cooldown), so lock should
+  // succeed — but rely on the 'lock' event to hide the overlay anyway so
+  // the rare failure case still leaves the button visible.
+  if (isMobile) hideResumeOverlay();
+  else          controls.lock();
 });
 
 controls.addEventListener('unlock', () => {
@@ -895,7 +901,8 @@ startBtn.addEventListener('click', startExperience);
 const AMBIENCE_VOLUME   = 0.5;
 const STEP_VOLUME       = 0.6;
 const RANDOM_VOLUME     = 0.7;
-const STEP_INTERVAL     = 0.45;     // seconds between footsteps while moving
+const STEP_INTERVAL        = 0.45;  // seconds between footsteps while walking
+const SPRINT_STEP_INTERVAL = 0.28;  // shorter cadence while sprinting (Q held)
 const RANDOM_MIN_GAP_S  = 1  * 60;  //  1 minute
 const RANDOM_MAX_GAP_S  = 10 * 60;  // 10 minutes
 // Per-clip play probability. random_03 = lowest, as requested.
@@ -977,10 +984,14 @@ function playStepSound() {
 
 function tickFootsteps(dt, isMoving) {
   if (!isMoving) { stepTimer = 0; return; }
+  // Sprinting (Q held, no Shift) = faster step cadence.
+  const sneaking  = keys['ShiftLeft'] || keys['ShiftRight'];
+  const sprinting = keys['KeyQ'] && !sneaking;
+  const interval  = sprinting ? SPRINT_STEP_INTERVAL : STEP_INTERVAL;
   stepTimer -= dt;
   if (stepTimer <= 0) {
     playStepSound();
-    stepTimer = STEP_INTERVAL;
+    stepTimer = interval;
   }
 }
 
@@ -1125,9 +1136,12 @@ function updateMovement(dt) {
     playerVy = 0;
     if (!isGrounded) {
       // Just landed — fire one random step sound, then delay the next
-      // walking step so they don't double up.
+      // walking step so they don't double up. Use whichever cadence the
+      // player will resume with (sprint or walk).
       playStepSound();
-      stepTimer = STEP_INTERVAL;
+      const sneakingNow  = keys['ShiftLeft'] || keys['ShiftRight'];
+      const sprintingNow = keys['KeyQ'] && !sneakingNow;
+      stepTimer = sprintingNow ? SPRINT_STEP_INTERVAL : STEP_INTERVAL;
     }
     isGrounded = true;
   } else {
