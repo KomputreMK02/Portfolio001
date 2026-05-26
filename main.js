@@ -459,7 +459,7 @@ const COLLECTIBLES_DATA = [
     color: 0xc89977,
     // iconUrl: './assets/items/aquarius.png',  // optional inventory icon
 
-    To replace the yellow box with your own .glb model:
+    // .glb model used as the floating collectible visual
     modelUrl:       './assets/items/aquario.glb',
     scale:          1.0,         // size multiplier
     modelY:         1.0,         // height above the anchor
