@@ -43,12 +43,19 @@ const PS1_JITTER = 480;
 const PIXEL_TEXTURES = true;
 
 // =============================================================
-// 1. LOADING MANAGER
+// 1. LOADING MANAGER + LOADING SCREEN
 // =============================================================
 const manager = new THREE.LoadingManager();
 const progressBar  = document.getElementById('progress-bar');
 const progressText = document.getElementById('progress-text');
 const startBtn     = document.getElementById('start-button');
+
+// If the player arrived here via a doorway, the URL has `?from=transition`.
+// We swap the Start button label to "Continue" so it feels like the same
+// experience picking up rather than a fresh start. (The click is still
+// required — browsers need a fresh user gesture to allow audio output.)
+const IS_FROM_TRANSITION = new URLSearchParams(window.location.search).has('from');
+if (IS_FROM_TRANSITION) startBtn.textContent = 'Continue';
 
 manager.onProgress = (url, loaded, total) => {
   const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
@@ -64,6 +71,45 @@ manager.onLoad = () => {
 manager.onError = (url) => {
   console.warn('Failed to load', url);
 };
+
+// ----- Wallpaper slideshow + random tip -----
+// Drop image paths into LOADING_WALLPAPERS to enable the slideshow above
+// the progress bar. If the array is empty, the wallpaper element hides
+// itself and the tip alone is shown.
+const LOADING_WALLPAPERS = [
+  // './assets/wallpapers/wp1.jpg',
+  // './assets/wallpapers/wp2.jpg',
+];
+const LOADING_TIPS = [
+  'Hold Q to sprint through the gallery.',
+  'Press I at any time to open your inventory.',
+  'Hold Shift to sneak and crouch.',
+  'Walk into a doorway to travel to another room.',
+  'You can adjust the volume from the pause menu.',
+  'Press E to interact with framed work and pick up items.',
+];
+const WALLPAPER_INTERVAL_MS = 4500;
+
+(function setupLoadingShow() {
+  const wpEl  = document.getElementById('loading-wallpaper');
+  const tipEl = document.getElementById('loading-tip');
+
+  if (tipEl && LOADING_TIPS.length) {
+    tipEl.textContent = LOADING_TIPS[Math.floor(Math.random() * LOADING_TIPS.length)];
+  }
+  if (!wpEl) return;
+  if (LOADING_WALLPAPERS.length === 0) {
+    wpEl.style.display = 'none';
+    return;
+  }
+  let i = Math.floor(Math.random() * LOADING_WALLPAPERS.length);
+  const next = () => {
+    wpEl.style.backgroundImage = `url('${LOADING_WALLPAPERS[i]}')`;
+    i = (i + 1) % LOADING_WALLPAPERS.length;
+  };
+  next();
+  setInterval(next, WALLPAPER_INTERVAL_MS);
+})();
 
 // =============================================================
 // 2. RENDERER / SCENE / CAMERA / LIGHTS
@@ -180,7 +226,14 @@ function ps1MeshMaterials(node) {
 //
 // To skip collision on a mesh (decorative props you can walk through),
 // give it a name starting with `decor_`, `prop_`, or `nocollide`.
+//
+// Doorway triggers: any mesh named `door_<destination>` is treated as a
+// walk-through trigger that loads `<destination>.html`. Model whatever
+// you want as the visual (a door, a picture frame, a glowing portal) and
+// name it `door_studio` or similar; the code will route through it.
 const collidables = [];
+const doorways = [];                // { mesh, destination, box }
+const ROOM_GLB_URL = window.ROOM_GLB_URL || './assets/room.glb';
 
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
@@ -190,7 +243,7 @@ gltfLoader.setDRACOLoader(dracoLoader);
 // Anchor name → Object3D in the loaded scene. Populated after .glb loads.
 const anchors = {};
 
-gltfLoader.load('./assets/room.glb', (gltf) => {
+gltfLoader.load(ROOM_GLB_URL, (gltf) => {
   const room = gltf.scene;
 
   room.traverse(node => {
@@ -232,7 +285,19 @@ gltfLoader.load('./assets/room.glb', (gltf) => {
         scene.add(lamp);
       }
 
-      const skip = /^(decor_|prop_|nocollide|light_)/i.test(node.name);
+      // Doorway triggers — walk-through, NOT collidable. The mesh stays
+      // visible (so it can be the actual door / portal visual the user
+      // models in Blender). Walking into its bounding box loads the next
+      // level page.
+      if (node.name && /^door_/i.test(node.name)) {
+        doorways.push({
+          mesh: node,
+          destination: node.name.substring(5),  // strip the "door_" prefix
+          box: new THREE.Box3(),
+        });
+      }
+
+      const skip = /^(decor_|prop_|nocollide|light_|door_)/i.test(node.name);
       if (!skip) collidables.push(node);
     }
 
@@ -244,10 +309,65 @@ gltfLoader.load('./assets/room.glb', (gltf) => {
 
   scene.add(room);
 
+  // Compute doorway bounding boxes in world space. Needs to happen after
+  // scene.add() so the world matrices are correct. Small expansion makes
+  // sure fast-moving players don't tunnel through thin door planes.
+  room.updateMatrixWorld(true);
+  for (const door of doorways) {
+    door.box.setFromObject(door.mesh);
+    door.box.expandByScalar(0.15);
+  }
+
   // Attach artworks + collectibles to the empties we just discovered.
   attachArtworks();
   attachCollectibles();
 });
+
+// =============================================================
+// DOORWAY TRANSITIONS
+// =============================================================
+// Called every frame; if the player camera is inside a doorway box, we
+// navigate to the matching destination page.
+const _doorCheckPos = new THREE.Vector3();
+function checkDoorways() {
+  if (!menuHiddenFlag) return;
+  if (window.__transitioning)  return;
+  if (doorways.length === 0)   return;
+  _doorCheckPos.copy(camera.position);
+  for (const door of doorways) {
+    if (door.box.containsPoint(_doorCheckPos)) {
+      transitionToLevel(door.destination);
+      return;
+    }
+  }
+}
+
+function transitionToLevel(destination) {
+  if (window.__transitioning) return;
+  window.__transitioning = true;
+  console.log(`[doorway] transitioning to ${destination}.html`);
+
+  // Optional doorway one-shot — silent if the mp3 wasn't found at load.
+  if (audioBuffers.doorway) playBuffer(audioBuffers.doorway, 1);
+
+  // Quick fade-to-black before the page swap, so the navigation doesn't
+  // look like an abrupt page jump.
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position: fixed; inset: 0; background: #000; z-index: 9999;
+    opacity: 0; transition: opacity 0.5s ease;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; letter-spacing: 0.3em; text-transform: uppercase;
+    font-size: 0.9rem;
+  `;
+  overlay.textContent = 'Loading…';
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+
+  setTimeout(() => {
+    window.location.href = `./${destination}.html?from=transition`;
+  }, 600);
+}
 
 // =============================================================
 // 4. ARTWORKS
@@ -315,7 +435,15 @@ const COLLECTIBLES_DATA = [
     name: 'Aquarius',
     description: 'A mysterious pack of italian matches. It seems to resemble one of the 12 zodiac signs ...',
     color: 0xc89977,
-    // iconUrl: './assets/items/cigarettes.png',  // optional — add later
+    // iconUrl: './assets/items/aquarius.png',  // optional inventory icon
+
+    // To replace the yellow box with your own .glb model:
+    // modelUrl:       './assets/items/aquarius.glb',
+    // scale:          1.0,         // size multiplier
+    // modelY:         1.0,         // height above the anchor
+    // modelRotationY: 0,           // initial facing direction (radians)
+    // rotates:        true,        // slowly spin in place
+    // bobs:           true,        // gently float up and down
   },
 ];
 
@@ -328,30 +456,58 @@ function attachCollectibles() {
 }
 
 function addCollectible(anchor, data) {
-  const cube = new THREE.Mesh(
-    new THREE.BoxGeometry(0.18, 0.12, 0.08),
-    ps1Material(new THREE.MeshStandardMaterial({
-      color: data.color || 0xffffff,
-      emissive: data.color || 0xffaa00,
-      emissiveIntensity: 0.4,
-      roughness: 0.5,
-    }))
-  );
-  cube.position.y = 1.0;
-  cube.castShadow = true;
-  cube.userData = {
+  // The interactable is a Group so the visual (cube OR loaded .glb) can
+  // change without breaking the raycaster/userData wiring.
+  const group = new THREE.Group();
+  group.position.y = data.modelY ?? 1.0;
+  group.userData = {
     type: 'pickup',
     id: data.id,
     name: data.name,
     description: data.description,
     iconUrl: data.iconUrl,
     color: data.color,
-    rotates: true,
-    bobs: true,
-    bobBase: 1.0,
+    rotates: data.rotates !== false,    // default true
+    bobs:    data.bobs    !== false,    // default true
+    bobBase: group.position.y,
   };
-  anchor.add(cube);
-  interactables.push(cube);
+  anchor.add(group);
+  interactables.push(group);
+
+  if (data.modelUrl) {
+    // Load the user-supplied .glb and add it as a child of the group.
+    gltfLoader.load(
+      data.modelUrl,
+      (gltf) => {
+        const model = gltf.scene;
+        model.scale.setScalar(data.scale ?? 1.0);
+        model.rotation.y = data.modelRotationY ?? 0;
+        model.traverse(node => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+            ps1MeshMaterials(node);
+          }
+        });
+        group.add(model);
+      },
+      undefined,
+      (err) => console.warn(`[collectible] Failed to load ${data.modelUrl}:`, err)
+    );
+  } else {
+    // Fallback: glowing placeholder cube (the original yellow box).
+    const cube = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.12, 0.08),
+      ps1Material(new THREE.MeshStandardMaterial({
+        color: data.color || 0xffffff,
+        emissive: data.color || 0xffaa00,
+        emissiveIntensity: 0.4,
+        roughness: 0.5,
+      }))
+    );
+    cube.castShadow = true;
+    group.add(cube);
+  }
 }
 
 function attachArtworks() {
@@ -943,6 +1099,11 @@ async function loadBuffer(url) {
       loadBuffer('./assets/sounds/random_02.mp3'),
       loadBuffer('./assets/sounds/random_03.mp3'),
     ]);
+    // Optional doorway transition sound. Drop a file at the path below
+    // and it will be used automatically; if it doesn't exist, transitions
+    // are silent.
+    try { audioBuffers.doorway = await loadBuffer('./assets/sounds/doorway.mp3'); }
+    catch (e) { audioBuffers.doorway = null; }
     console.log('[sound] all clips loaded');
     console.log(`[sound] first random one-shot in ${(randomTimer/60).toFixed(1)} min`);
     if (ambienceWantsStart) startAmbience(); // user clicked Start while loading
@@ -1160,6 +1321,7 @@ function animate() {
   checkInteraction();
   tickFootsteps(dt, isPlayerMoving());
   tickRandomSounds(dt);
+  checkDoorways();
 
   const t = performance.now() * 0.002;
   scene.traverse(o => {

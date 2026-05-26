@@ -393,6 +393,32 @@ kbd {
   cursor: pointer;
 }
 
+/* ============ Loading screen wallpaper + tip ============ */
+#loading-wallpaper {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 1rem 0 0.5rem;
+  background-color: #111;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(255,255,255,0.15);
+  image-rendering: pixelated;
+  transition: background-image 0.6s ease-in-out;
+}
+#loading-tip {
+  margin-bottom: 1rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  padding: 0.55rem 0.9rem;
+  font-size: 0.8rem;
+  font-style: italic;
+  letter-spacing: 0.05em;
+  text-align: left;
+  opacity: 0.85;
+  min-height: 1.4rem;
+}
+#loading-tip:empty { display: none; }
+
 /* ============ Volume slider (pause menu) ============ */
 .volume-row {
   display: flex;
