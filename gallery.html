@@ -95,12 +95,26 @@
 
   <!-- ============ MOBILE TOUCH CONTROLS ============ -->
   <!-- Hidden by default; shown when a touch device is detected.
-       TODO: see TaskList #3 — needs jump/sneak/sprint/inventory/pause buttons. -->
+       Layout:
+         - Joystick: bottom-left, move
+         - Action stack (bottom-right): Jump / Sneak / Sprint / Interact (E)
+         - Top-right corner: Inventory + Pause icons -->
   <div id="touch-ui" class="hidden">
     <div id="joystick">
       <div id="joystick-knob"></div>
     </div>
-    <button id="touch-interact" aria-label="Interact">E</button>
+
+    <div id="touch-actions">
+      <button id="touch-jump"    class="touch-btn" aria-label="Jump">JUMP</button>
+      <button id="touch-sneak"   class="touch-btn" aria-label="Sneak (toggle)">SNEAK</button>
+      <button id="touch-sprint"  class="touch-btn" aria-label="Sprint (hold)">SPRINT</button>
+      <button id="touch-interact" class="touch-btn touch-interact" aria-label="Interact">E</button>
+    </div>
+
+    <div id="touch-corner">
+      <button id="touch-inventory" class="touch-icon-btn" aria-label="Inventory">I</button>
+      <button id="touch-pause"     class="touch-icon-btn" aria-label="Pause">II</button>
+    </div>
   </div>
 
   <!-- Tells main.js which level this page is. Must match an id in levels.js. -->

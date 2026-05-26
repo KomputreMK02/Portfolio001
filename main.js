@@ -859,8 +859,76 @@ if (isMobile) {
   }, { passive: true });
 
   interactBtn.addEventListener('click', () => {
-    if (currentInteractable) openArtworkModal(currentInteractable.userData);
+    // Route through handleInteract so pickups become inventory items and
+    // artwork frames open the modal — same branching as desktop's E key.
+    handleInteract();
   });
+
+  // ----- Jump (tap) -----
+  const jumpBtn = document.getElementById('touch-jump');
+  if (jumpBtn) {
+    jumpBtn.addEventListener('click', () => {
+      if (!menuHiddenFlag) return;
+      if (isGrounded) playerVy = JUMP_VELOCITY;
+    });
+  }
+
+  // ----- Sneak (toggle) -----
+  // Sneak is a TOGGLE on mobile (tap once to crouch, tap again to stand)
+  // because holding a button while moving the joystick is ergonomically
+  // awkward. We simulate ShiftLeft by setting keys['ShiftLeft'] directly,
+  // so the existing speed/crouch code in updateMovement just works.
+  const sneakBtn = document.getElementById('touch-sneak');
+  if (sneakBtn) {
+    sneakBtn.addEventListener('click', () => {
+      if (!menuHiddenFlag) return;
+      const nowOn = !keys['ShiftLeft'];
+      keys['ShiftLeft'] = nowOn;
+      sneakBtn.classList.toggle('active', nowOn);
+    });
+  }
+
+  // ----- Sprint (hold) -----
+  // Sprint is a HOLD button: pressed → keys['KeyQ'] = true, released → false.
+  // Same mechanic as desktop Q. Uses pointer events so it works for both
+  // touch and stylus / mouse on hybrid devices.
+  const sprintBtn = document.getElementById('touch-sprint');
+  if (sprintBtn) {
+    const start = (e) => {
+      if (!menuHiddenFlag) return;
+      e.preventDefault();
+      keys['KeyQ'] = true;
+      sprintBtn.classList.add('held');
+    };
+    const end = () => {
+      keys['KeyQ'] = false;
+      sprintBtn.classList.remove('held');
+    };
+    sprintBtn.addEventListener('pointerdown',   start);
+    sprintBtn.addEventListener('pointerup',     end);
+    sprintBtn.addEventListener('pointercancel', end);
+    sprintBtn.addEventListener('pointerleave',  end);
+  }
+
+  // ----- Inventory + Pause icons (top-right corner) -----
+  const invBtn = document.getElementById('touch-inventory');
+  if (invBtn) {
+    invBtn.addEventListener('click', () => {
+      if (!menuHiddenFlag) return;
+      if (!modal.classList.contains('hidden')) return; // don't open over the artwork modal
+      toggleInventory();
+    });
+  }
+
+  const pauseBtn = document.getElementById('touch-pause');
+  if (pauseBtn) {
+    pauseBtn.addEventListener('click', () => {
+      if (!menuHiddenFlag) return;
+      // Mobile has no pointer-lock, so "pause" just means showing the
+      // resume overlay. Tapping the overlay's Resume button hides it.
+      showResumeOverlay();
+    });
+  }
 }
 
 function updateJoystick(touch) {
@@ -1125,6 +1193,35 @@ const masterGain = audioCtx.createGain();
 masterGain.gain.value = 0.7;        // slider initial value (matches HTML)
 masterGain.connect(audioCtx.destination);
 
+// iOS Safari quirk: `audioCtx.resume()` alone is not sufficient to fully
+// unlock audio output. Even after resume() succeeds, iOS keeps the audio
+// pipeline muted until at least one AudioBufferSourceNode actually
+// produces output during the user gesture. The standard workaround is to
+// play a tiny silent buffer the first time the user interacts with the
+// page. After that, all subsequent buffers play normally.
+let audioUnlocked = false;
+function unlockAudioOnce() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  try {
+    const buf = audioCtx.createBuffer(1, 1, 22050);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    src.start(0);
+  } catch (e) {
+    console.warn('[sound] iOS unlock buffer failed:', e);
+  }
+}
+
+// Belt-and-suspenders: ANY first interaction also unlocks audio, in case
+// the Start button isn't the user's first gesture (e.g. they scrolled or
+// tapped the canvas before clicking Start).
+document.addEventListener('click',      unlockAudioOnce, { once: true, capture: true });
+document.addEventListener('touchstart', unlockAudioOnce, { once: true, capture: true });
+document.addEventListener('keydown',    unlockAudioOnce, { once: true, capture: true });
+
 const audioBuffers = { ambience: null, steps: [], random: [] };
 let ambienceSource = null;
 let ambienceWantsStart = false;     // user pressed Start before buffer loaded
@@ -1181,9 +1278,11 @@ function playBuffer(buf, gain = 1, loop = false) {
 }
 
 function startAmbience() {
-  // AudioContext starts in 'suspended' state; the Start button click is
-  // the user gesture that lets us resume it.
-  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  // Synchronously unlock the audio pipeline. This MUST happen during the
+  // user gesture that called us (the Start button click) — particularly
+  // for iOS Safari, where audio output stays muted until a buffer plays
+  // inside the gesture frame.
+  unlockAudioOnce();
   ambienceWantsStart = true;
   if (ambienceSource || !audioBuffers.ambience) return;
   ambienceSource = playBuffer(audioBuffers.ambience, AMBIENCE_VOLUME, true);

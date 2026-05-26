@@ -396,19 +396,90 @@ kbd {
   pointer-events: none;
 }
 
-#touch-interact {
+/* Touch action stack — bottom-right column above the interact button.
+   Jump / Sneak / Sprint / E in a tight vertical arrangement so the
+   thumb can reach all of them. Sneak toggles, Sprint is hold, the rest
+   are taps. */
+#touch-actions {
   position: absolute;
-  bottom: 8%;
-  right: 6%;
-  width: 70px; height: 70px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.15);
-  border: 2px solid rgba(255,255,255,0.3);
-  color: #fff;
-  font-size: 1.2rem;
-  font-weight: 600;
+  bottom: calc(6% + env(safe-area-inset-bottom, 0px));
+  right:  calc(5% + env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
+  pointer-events: none; /* re-enabled on children */
+}
+
+.touch-btn {
   pointer-events: auto;
+  width: 70px;
+  height: 60px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.12);
+  border: 2px solid rgba(255,255,255,0.28);
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  font-weight: 600;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background 0.1s ease, transform 0.1s ease;
+}
+.touch-btn:active {
+  background: rgba(255,255,255,0.32);
+  transform: scale(0.95);
+}
+.touch-btn.held,
+.touch-btn.active {
+  background: rgba(255,255,255,0.32);
+  border-color: rgba(255,255,255,0.6);
+}
+
+/* The interact (E) button is slightly bigger / circular so it stands
+   out as the primary action. */
+.touch-interact {
+  width: 75px;
+  height: 75px;
+  border-radius: 50%;
+  font-size: 1.2rem;
+}
+
+/* Top-right corner icons (Inventory, Pause). Smaller, less obtrusive. */
+#touch-corner {
+  position: absolute;
+  top:   calc(3% + env(safe-area-inset-top, 0px));
+  right: calc(3% + env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.touch-icon-btn {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  backdrop-filter: blur(8px);
+  transition: background 0.1s ease, transform 0.1s ease;
+}
+.touch-icon-btn:active {
+  background: rgba(0,0,0,0.7);
+  transform: scale(0.92);
 }
 
 /* ============ Loading screen ============
@@ -535,9 +606,10 @@ kbd {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;     /* anchor everything to the top-left */
   align-items: flex-start;
-  pointer-events: none; /* re-enabled on interactive children */
+  gap: clamp(1.5rem, 5vh, 4rem);   /* breathing room between title + menu */
+  pointer-events: none;
 }
 
 .start-menu .start-title-image,
@@ -549,6 +621,7 @@ kbd {
   pointer-events: auto;
   filter: drop-shadow(0 4px 18px rgba(0,0,0,0.6));
   image-rendering: pixelated;
+  flex-shrink: 0;
 }
 .start-menu .start-title-fallback {
   font-size: clamp(2rem, 6vw, 5rem);
@@ -562,9 +635,11 @@ kbd {
 .menu-nav,
 .menu-panel {
   pointer-events: auto;
-  margin-bottom: 4vh;
   min-width: 280px;
   max-width: 50vw;
+  /* No bottom margin — the parent's `gap` handles spacing. The menu now
+     sits just below the title image regardless of viewport height, so
+     tall portrait tablets don't push it down to the bottom edge. */
 }
 
 .menu-nav ul,
