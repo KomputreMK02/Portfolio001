@@ -1049,6 +1049,31 @@ resumeButton.addEventListener('click', () => {
   else          controls.lock();
 });
 
+// "Back to Main Menu" — fade audio + visuals then navigate to index.html.
+const backToMenuButton = document.getElementById('back-to-menu-button');
+if (backToMenuButton) {
+  backToMenuButton.addEventListener('click', () => {
+    if (window.__transitioning) return;
+    window.__transitioning = true;
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed; inset: 0; background: #000; z-index: 9999;
+      opacity: 0; transition: opacity 0.4s ease;
+    `;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+
+    try {
+      masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+    } catch (e) {}
+
+    setTimeout(() => {
+      window.location.href = './index.html';
+    }, 420);
+  });
+}
+
 controls.addEventListener('unlock', () => {
   // Don't surface the resume overlay if the unlock was caused by opening
   // the inventory or modal — those have their own UI to return from.
