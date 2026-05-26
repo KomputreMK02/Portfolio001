@@ -58,26 +58,30 @@ const PIXEL_TEXTURES = true;
 // =============================================================
 // 1. LOADING MANAGER + LOADING SCREEN
 // =============================================================
-const manager = new THREE.LoadingManager();
-const progressBar  = document.getElementById('progress-bar');
-const progressText = document.getElementById('progress-text');
-const startBtn     = document.getElementById('start-button');
+const manager       = new THREE.LoadingManager();
+const progressBar   = document.getElementById('progress-bar');
+const percentText   = document.getElementById('loading-percent');
+const levelNameEl   = document.getElementById('loading-level-name');
+const startBtn      = document.getElementById('start-button');
+
+// Populate the level-name label as soon as we know what level we are.
+if (levelNameEl) levelNameEl.textContent = `Loading ${LEVEL_NAME}…`;
 
 // If the player arrived here via a doorway, the URL has `?from=transition`.
-// We swap the Start button label to "Continue" so it feels like the same
-// experience picking up rather than a fresh start. (The click is still
-// required — browsers need a fresh user gesture to allow audio output.)
+// Swap the Enter button label to "Continue" so it feels like the same
+// experience picking up rather than a fresh start.
 const IS_FROM_TRANSITION = new URLSearchParams(window.location.search).has('from');
 if (IS_FROM_TRANSITION) startBtn.textContent = 'Continue';
 
 manager.onProgress = (url, loaded, total) => {
   const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
   progressBar.style.width = pct + '%';
-  progressText.textContent = `Loading… ${pct}%`;
+  if (percentText) percentText.textContent = `${pct}%`;
 };
 manager.onLoad = () => {
   progressBar.style.width = '100%';
-  progressText.textContent = 'Ready';
+  if (percentText) percentText.textContent = '100%';
+  if (levelNameEl) levelNameEl.textContent = `${LEVEL_NAME} ready`;
   startBtn.disabled = false;
   startBtn.classList.add('ready');
 };
@@ -112,7 +116,9 @@ const WALLPAPER_INTERVAL_MS = 4500;
   }
   if (!wpEl) return;
   if (LOADING_WALLPAPERS.length === 0) {
-    wpEl.style.display = 'none';
+    // No wallpapers configured — leave the element in place so the
+    // loading-screen layout still has its top panel; it just shows
+    // the fallback background color from the CSS.
     return;
   }
   let i = Math.floor(Math.random() * LOADING_WALLPAPERS.length);

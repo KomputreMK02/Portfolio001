@@ -22,43 +22,23 @@
   <!-- This sits on top of everything until the user presses Start.
        Loading happens in the background; the Start button is disabled
        until the LoadingManager reports 100%. -->
-  <div id="menu" class="overlay">
-    <div class="menu-inner">
-      <!-- Drop a title image at ./assets/title.png to replace the text. -->
-      <img id="title-image" class="title-image"
-           src="./assets/title.png" alt=""
-           onerror="this.style.display='none'; document.getElementById('title-fallback').style.display='block';" />
-      <h1 id="title-fallback" class="title" style="display:none;">YOUR&nbsp;NAME</h1>
-      <p class="subtitle">An interactive portfolio</p>
-
-      <!-- Loading-screen extras: wallpaper slideshow + random tip.
-           Both are populated by main.js. The wallpaper hides itself if
-           the LOADING_WALLPAPERS array is empty. -->
-      <div id="loading-wallpaper"></div>
+  <!-- ============ LOADING SCREEN ============ -->
+  <!-- Shown while the room.glb (and other assets) load. Wallpaper fills
+       the top ~75% of the viewport; a black tip bar sits along the
+       bottom 25%; the dividing line between them is the progress bar. -->
+  <div id="menu" class="overlay loading-screen">
+    <div id="loading-wallpaper">
+      <div class="loading-status">
+        <span id="loading-level-name">Loading…</span>
+        <span id="loading-percent">0%</span>
+      </div>
+    </div>
+    <div class="loading-bar-track">
+      <div id="progress-bar"></div>
+    </div>
+    <div class="loading-bottom-box">
       <div id="loading-tip"></div>
-
-      <div class="loading">
-        <div class="bar"><div id="progress-bar"></div></div>
-        <div id="progress-text">Loading… 0%</div>
-      </div>
-
-      <button id="start-button" class="btn" disabled>Start</button>
-      <p class="hint">Press <kbd>Enter</kbd> or click Start</p>
-
-      <div class="controls-hint">
-        <div>
-          <strong>WASD</strong> move &nbsp;·&nbsp;
-          <strong>Mouse</strong> look &nbsp;·&nbsp;
-          <strong>Space</strong> jump &nbsp;·&nbsp;
-          <strong>Shift</strong> sneak &nbsp;·&nbsp;
-          <strong>Q</strong> sprint
-        </div>
-        <div style="margin-top:0.4rem;">
-          <strong>E</strong> interact &nbsp;·&nbsp;
-          <strong>I</strong> inventory &nbsp;·&nbsp;
-          <strong>Esc</strong> pause
-        </div>
-      </div>
+      <button id="start-button" class="btn" disabled>Enter</button>
     </div>
   </div>
 
