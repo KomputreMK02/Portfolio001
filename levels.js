@@ -23,6 +23,10 @@ export const LEVELS = [
     id:   'gallery',
     name: 'Gallery',
     glb:  './assets/room.glb',
+    // Override the default <id>.html navigation target. Used while we
+    // still serve this level as index.html — once we rename the file to
+    // gallery.html in a later step, this `file` line can be removed.
+    file: 'index.html',
     // description: 'The main hall.',
     // thumbnail:   './assets/levels/gallery.jpg',
   },

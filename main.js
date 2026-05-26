@@ -387,7 +387,10 @@ function transitionToLevel(destination) {
   requestAnimationFrame(() => { overlay.style.opacity = '1'; });
 
   setTimeout(() => {
-    window.location.href = `./${target.id}.html?from=transition`;
+    // The level may override the default filename via a `file` field
+    // (used while gallery is still served as index.html).
+    const file = target.file || `${target.id}.html`;
+    window.location.href = `./${file}?from=transition`;
   }, 600);
 }
 
