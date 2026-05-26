@@ -20,6 +20,19 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { GLTFLoader }          from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader }         from 'three/addons/loaders/DRACOLoader.js';
 import { RoomEnvironment }     from 'three/addons/environments/RoomEnvironment.js';
+import { getLevelById, getDefaultLevel } from './levels.js';
+
+// =============================================================
+// CURRENT LEVEL
+// =============================================================
+// Each level page sets `window.LEVEL_ID` (e.g. 'gallery', 'studio')
+// before loading this script; we use it to look up the room glb and
+// display name. Falls back to the first registered level if nothing
+// was set, so the file still works opened directly.
+const LEVEL      = getLevelById(window.LEVEL_ID) || getDefaultLevel();
+const LEVEL_ID   = LEVEL.id;
+const LEVEL_NAME = LEVEL.name;
+console.log(`[level] loading "${LEVEL_NAME}" (id=${LEVEL_ID}) from ${LEVEL.glb}`);
 
 // =============================================================
 // CLASSIC-ERA AESTHETIC KNOBS
@@ -233,7 +246,7 @@ function ps1MeshMaterials(node) {
 // name it `door_studio` or similar; the code will route through it.
 const collidables = [];
 const doorways = [];                // { mesh, destination, box }
-const ROOM_GLB_URL = window.ROOM_GLB_URL || './assets/room.glb';
+const ROOM_GLB_URL = LEVEL.glb;
 
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
@@ -344,8 +357,17 @@ function checkDoorways() {
 
 function transitionToLevel(destination) {
   if (window.__transitioning) return;
+
+  // Validate against the levels registry so a typo in Blender (e.g.
+  // door_studoi) warns in the console instead of triggering a 404.
+  const target = getLevelById(destination);
+  if (!target) {
+    console.warn(`[doorway] No level registered with id "${destination}" — check levels.js. Door ignored.`);
+    return;
+  }
+
   window.__transitioning = true;
-  console.log(`[doorway] transitioning to ${destination}.html`);
+  console.log(`[doorway] transitioning to ${target.id}.html (${target.name})`);
 
   // Optional doorway one-shot — silent if the mp3 wasn't found at load.
   if (audioBuffers.doorway) playBuffer(audioBuffers.doorway, 1);
@@ -365,7 +387,7 @@ function transitionToLevel(destination) {
   requestAnimationFrame(() => { overlay.style.opacity = '1'; });
 
   setTimeout(() => {
-    window.location.href = `./${destination}.html?from=transition`;
+    window.location.href = `./${target.id}.html?from=transition`;
   }, 600);
 }
 
