@@ -310,10 +310,10 @@ const interactables = [];
 // to add it to the inventory.
 const COLLECTIBLES_DATA = [
   {
-    anchor: 'pickup_cigarettes',
-    id: 'cigarettes',
-    name: 'Pack of Cigarettes',
-    description: 'A half-empty pack of cigarettes. Picked up somewhere in the gallery.',
+    anchor: 'pickup_aquarius',
+    id: 'aquarius',
+    name: 'Aquarius',
+    description: 'A mysterious pack of italian matches. It seems to resemble one of the 12 zodiac signs ...',
     color: 0xc89977,
     // iconUrl: './assets/items/cigarettes.png',  // optional — add later
   },
