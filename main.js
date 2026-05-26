@@ -310,7 +310,7 @@ const interactables = [];
 // to add it to the inventory.
 const COLLECTIBLES_DATA = [
   {
-    anchor: 'pickup_aquarius',
+    anchor: 'pickup_aquario',
     id: 'aquarius',
     name: 'Aquarius',
     description: 'A mysterious pack of italian matches. It seems to resemble one of the 12 zodiac signs ...',
