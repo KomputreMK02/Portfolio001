@@ -1,4 +1,4 @@
-// =============================================================
+ // =============================================================
 //  Portfolio Gallery — Three.js
 //  Loads a Blender-exported room (assets/room.glb) and attaches
 //  artworks to named empties inside it.
@@ -437,13 +437,13 @@ const COLLECTIBLES_DATA = [
     color: 0xc89977,
     // iconUrl: './assets/items/aquarius.png',  // optional inventory icon
 
-    // To replace the yellow box with your own .glb model:
-    // modelUrl:       './assets/items/aquarius.glb',
-    // scale:          1.0,         // size multiplier
-    // modelY:         1.0,         // height above the anchor
-    // modelRotationY: 0,           // initial facing direction (radians)
-    // rotates:        true,        // slowly spin in place
-    // bobs:           true,        // gently float up and down
+    To replace the yellow box with your own .glb model:
+    modelUrl:       './assets/items/aquario.glb',
+    scale:          1.0,         // size multiplier
+    modelY:         1.0,         // height above the anchor
+    modelRotationY: 0,           // initial facing direction (radians)
+    rotates:        true,        // slowly spin in place
+    bobs:           true,        // gently float up and down
   },
 ];
 
