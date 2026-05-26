@@ -482,6 +482,179 @@ kbd {
   flex-shrink: 0;
 }
 
+/* ============ Start-up menu (index.html) ============
+   Left-aligned title image at the top, vertical menu pushed to the
+   bottom-left, full-bleed video backdrop behind everything. ======= */
+
+.start-menu-body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  transition: opacity 0.4s ease;
+}
+.start-menu-body.fading-out { opacity: 0; }
+
+#menu-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  filter: brightness(0.5);
+  background: #000;
+}
+
+.start-menu {
+  position: relative;
+  z-index: 10;
+  padding: 5vh 5vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none; /* re-enabled on interactive children */
+}
+
+.start-menu .start-title-image,
+.start-menu .start-title-fallback {
+  display: block;
+  max-width: 55vw;
+  max-height: 28vh;
+  margin: 0;
+  pointer-events: auto;
+  filter: drop-shadow(0 4px 18px rgba(0,0,0,0.6));
+  image-rendering: pixelated;
+}
+.start-menu .start-title-fallback {
+  font-size: clamp(2rem, 6vw, 5rem);
+  font-weight: 200;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* Menu panels — main / level select / settings all share these */
+.menu-nav,
+.menu-panel {
+  pointer-events: auto;
+  margin-bottom: 4vh;
+  min-width: 280px;
+  max-width: 50vw;
+}
+
+.menu-nav ul,
+.panel-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.menu-nav li,
+.panel-list li,
+.panel-back {
+  display: block;
+  width: auto;
+  padding: 0.4rem 0;
+  font: inherit;
+  font-size: clamp(1rem, 1.8vw, 1.4rem);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.menu-nav li:hover, .menu-nav li.selected,
+.panel-list li:hover, .panel-list li.selected,
+.panel-back:hover, .panel-back.selected {
+  opacity: 1;
+  transform: translateX(0.5rem);
+}
+
+/* Marker for the currently selected item */
+.menu-nav li.selected::before,
+.panel-list li.selected::before,
+.panel-back.selected::before {
+  content: '› ';
+  margin-right: 0.3rem;
+}
+
+.menu-nav.hidden,
+.menu-panel.hidden {
+  display: none;
+}
+
+.panel-title {
+  font-size: clamp(1.1rem, 2vw, 1.8rem);
+  font-weight: 300;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  margin: 0 0 1rem;
+  opacity: 0.7;
+}
+
+.panel-back {
+  margin-top: 1rem;
+}
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  pointer-events: auto;
+}
+.settings-row label {
+  font-size: 0.8rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.settings-row input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  width: 100%;
+  max-width: 320px;
+  cursor: pointer;
+  height: 18px;
+}
+.settings-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  background: rgba(255,255,255,0.3);
+}
+.settings-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  margin-top: -5px;
+}
+.settings-row input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: rgba(255,255,255,0.3);
+}
+.settings-row input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  border: none;
+}
+
 /* ============ Volume slider (pause menu) ============ */
 .volume-row {
   display: flex;

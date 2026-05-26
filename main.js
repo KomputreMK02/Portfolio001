@@ -1228,11 +1228,18 @@ function isPlayerMoving() {
 }
 
 // ----- Master volume slider in the pause menu -----
+// Persists in localStorage under the same key the start-up menu uses, so
+// changes made on either page carry over to the other.
+const STORAGE_VOLUME_KEY = 'portfolio.volume';
+const _storedVolume = parseInt(localStorage.getItem(STORAGE_VOLUME_KEY) ?? '70', 10);
+masterGain.gain.value = _storedVolume / 100;
+
 const volumeSlider = document.getElementById('volume-slider');
 if (volumeSlider) {
-  masterGain.gain.value = volumeSlider.value / 100;
+  volumeSlider.value = _storedVolume;
   volumeSlider.addEventListener('input', () => {
     masterGain.gain.value = volumeSlider.value / 100;
+    localStorage.setItem(STORAGE_VOLUME_KEY, volumeSlider.value);
   });
 }
 
