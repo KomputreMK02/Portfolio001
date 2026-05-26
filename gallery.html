@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Gallery — Portfolio</title>
+  <link rel="stylesheet" href="./style.css" />
+
+  <!-- Import map: lets us write `import * as THREE from 'three'` with no build step.
+       GitHub Pages serves the page over HTTPS, the CDN serves Three.js — that's it. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- ============ LOADING SCREEN ============ -->
+  <!-- Shown while the room.glb (and other assets) load. Wallpaper fills
+       the top ~75% of the viewport; a black tip bar sits along the
+       bottom 25%; the dividing line between them is the progress bar. -->
+  <div id="menu" class="overlay loading-screen">
+    <div id="loading-wallpaper">
+      <div class="loading-status">
+        <span id="loading-level-name">Loading…</span>
+        <span id="loading-percent">0%</span>
+      </div>
+    </div>
+    <div class="loading-bar-track">
+      <div id="progress-bar"></div>
+    </div>
+    <div class="loading-bottom-box">
+      <div id="loading-tip"></div>
+      <button id="start-button" class="btn" disabled>Enter</button>
+    </div>
+  </div>
+
+  <!-- ============ 3D SCENE ============ -->
+  <canvas id="scene"></canvas>
+
+  <!-- ============ HUD ============ -->
+  <div id="hud" class="hidden">
+    <div id="crosshair"></div>
+    <div id="prompt" class="hidden"></div>
+  </div>
+
+  <!-- ============ RESUME OVERLAY ============ -->
+  <!-- Shown when pointer lock is released (after closing a modal, or
+       if the user pressed Escape mid-game). A click re-acquires lock. -->
+  <div id="resume-overlay" class="overlay hidden">
+    <div class="menu-inner">
+      <p class="subtitle">Paused</p>
+      <button id="resume-button" class="btn">Click to resume</button>
+      <p class="hint">or press <kbd>Enter</kbd></p>
+
+      <div class="volume-row">
+        <label for="volume-slider">Volume</label>
+        <input id="volume-slider" type="range" min="0" max="100" value="70" />
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ARTWORK MODAL ============ -->
+  <!-- Opens when player presses E on an interactable. Pointer lock releases
+       so the user can read / click. Closing returns to the scene. -->
+  <div id="artwork-modal" class="overlay hidden">
+    <div class="modal-card">
+      <button id="modal-close" class="modal-close" aria-label="Close">×</button>
+      <div id="modal-media"></div>
+      <h2 id="modal-title"></h2>
+      <p id="modal-description"></p>
+      <p class="hint">Press <kbd>E</kbd> to close</p>
+    </div>
+  </div>
+
+  <!-- ============ INVENTORY OVERLAY ============ -->
+  <div id="inventory-overlay" class="overlay hidden">
+    <div class="menu-inner inventory-card">
+      <h2 class="inv-title">INVENTORY</h2>
+      <div id="inventory-grid" class="inventory-grid"></div>
+      <div id="inventory-detail" class="inventory-detail">
+        <p class="hint">Select an item to view its description.</p>
+      </div>
+      <p class="hint">Press <kbd>I</kbd> to close</p>
+    </div>
+  </div>
+
+  <!-- ============ TOAST (pickup notifications) ============ -->
+  <div id="toast" class="hidden"></div>
+
+  <!-- ============ MOBILE TOUCH CONTROLS ============ -->
+  <!-- Hidden by default; shown when a touch device is detected.
+       TODO: see TaskList #3 — needs jump/sneak/sprint/inventory/pause buttons. -->
+  <div id="touch-ui" class="hidden">
+    <div id="joystick">
+      <div id="joystick-knob"></div>
+    </div>
+    <button id="touch-interact" aria-label="Interact">E</button>
+  </div>
+
+  <!-- Tells main.js which level this page is. Must match an id in levels.js. -->
+  <script>window.LEVEL_ID = 'gallery';</script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
