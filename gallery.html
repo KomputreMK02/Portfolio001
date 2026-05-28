@@ -79,14 +79,28 @@
   </div>
 
   <!-- ============ INVENTORY OVERLAY ============ -->
+  <!-- Single-item viewer:
+         [‹]  [3D preview canvas]  [›]
+              Item Name (centered, big)
+         [description box]
+       Left/Right arrows + A/D scroll through inventory. -->
   <div id="inventory-overlay" class="overlay hidden">
     <div class="menu-inner inventory-card">
       <h2 class="inv-title">INVENTORY</h2>
-      <div id="inventory-grid" class="inventory-grid"></div>
-      <div id="inventory-detail" class="inventory-detail">
-        <p class="hint">Select an item to view its description.</p>
+
+      <div class="inv-preview-row">
+        <button id="inv-arrow-left"  class="inv-arrow" aria-label="Previous item">‹</button>
+        <canvas id="inv-preview-canvas"></canvas>
+        <button id="inv-arrow-right" class="inv-arrow" aria-label="Next item">›</button>
       </div>
-      <p class="hint">Press <kbd>I</kbd> to close</p>
+
+      <h3 id="inv-item-name" class="inv-item-name">— Empty —</h3>
+
+      <div id="inv-item-description" class="inv-item-description">
+        <p class="hint">Walk up to a glowing item and press E to pick it up.</p>
+      </div>
+
+      <p class="hint">Press <kbd>I</kbd> to close &nbsp;·&nbsp; <kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd>/<kbd>D</kbd> to browse</p>
     </div>
   </div>
 

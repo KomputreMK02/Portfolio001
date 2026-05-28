@@ -273,77 +273,73 @@ kbd {
   margin-bottom: 1.5rem;
 }
 
-.inventory-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
-}
+/* Inventory single-item viewer:
+     [‹]  [canvas]  [›]    ← preview row
+       Item Name           ← centered, large
+     [description box]     ← bottom panel */
 
-.inv-slot {
-  aspect-ratio: 1;
-  background: var(--ui-slot-bg, rgba(255,255,255,0.04));
-  border: 1px solid rgba(255,255,255,0.12);
+.inv-preview-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-direction: column;
-  padding: 0.5rem;
-  font-size: 0.65rem;
-  letter-spacing: 0.05em;
-  text-align: center;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.inv-slot.filled {
-  background: var(--ui-slot-filled-bg, rgba(255,255,255,0.09));
-  border-color: rgba(255,255,255,0.3);
-}
-
-.inv-slot:hover.filled {
-  background: rgba(255,255,255,0.15);
-}
-
-.inv-slot.selected {
-  border-color: #fff;
-  background: rgba(255,255,255,0.12);
-}
-
-.inv-slot img {
-  max-width: 70%;
-  max-height: 65%;
-  object-fit: contain;
-  image-rendering: pixelated;
-  margin-bottom: 0.25rem;
-}
-
-.inv-slot .slot-name {
-  opacity: 0.75;
-  line-height: 1.2;
-}
-
-.inventory-detail {
-  min-height: 4rem;
-  padding: 0.75rem 1rem;
-  background: rgba(0,0,0,0.4);
-  border: 1px solid rgba(255,255,255,0.1);
-  text-align: left;
+  gap: 1rem;
   margin-bottom: 1rem;
 }
 
-.inventory-detail h3 {
-  font-size: 0.95rem;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  margin-bottom: 0.4rem;
-  font-weight: 400;
+#inv-preview-canvas {
+  flex-shrink: 0;
+  width: clamp(220px, 50vw, 320px);
+  height: clamp(180px, 35vh, 260px);
+  background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  image-rendering: pixelated; /* keep the PS1 vibe consistent */
 }
 
-.inventory-detail p {
-  font-size: 0.85rem;
-  line-height: 1.5;
-  opacity: 0.75;
+.inv-arrow {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.28);
+  color: #fff;
+  font-family: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition: background 0.1s ease, transform 0.1s ease;
+}
+.inv-arrow:hover  { background: rgba(255,255,255,0.18); }
+.inv-arrow:active { transform: scale(0.92); }
+.inv-arrow:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.inv-item-name {
+  font-size: clamp(1.1rem, 2vw, 1.6rem);
+  font-weight: 300;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 0 0 1rem;
+}
+
+.inv-item-description {
+  min-height: 4.5rem;
+  padding: 0.85rem 1rem;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.12);
+  text-align: left;
+  margin-bottom: 1rem;
+}
+.inv-item-description p {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  opacity: 0.85;
 }
 
 /* ============ Toast (pickup notifications) ============ */

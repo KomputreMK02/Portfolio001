@@ -498,6 +498,10 @@ function addCollectible(anchor, data) {
     description: data.description,
     iconUrl: data.iconUrl,
     color: data.color,
+    // Stash the model fields so pickupCollectible() can copy them into
+    // the inventory entry, where the 3D preview will re-instantiate it.
+    modelUrl: data.modelUrl,
+    modelScale: data.scale,
     rotates: data.rotates !== false,    // default true
     bobs:    data.bobs    !== false,    // default true
     bobBase: group.position.y,
@@ -751,6 +755,22 @@ document.addEventListener('keydown', (e) => {
       toggleInventory();
     }
     return;
+  }
+
+  // ---------- Arrow nav while inventory is open ------------------------
+  // Left/Right arrows or A/D scroll through inventory items. Must run
+  // BEFORE the in-game gate since the inventory release pointer lock.
+  if (!inventoryOverlay.classList.contains('hidden') && modal.classList.contains('hidden')) {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+      e.preventDefault();
+      prevInventoryItem();
+      return;
+    }
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+      e.preventDefault();
+      nextInventoryItem();
+      return;
+    }
   }
 
   // ---------- E (while modal is open): close artwork modal -------------
@@ -1013,44 +1033,152 @@ document.getElementById('modal-close').addEventListener('click', () => {
 // INVENTORY + INTERACT HANDLER
 // =============================================================
 // `inventory` is an array of item-data objects (same shape as COLLECTIBLES_DATA
-// entries). The inventory UI re-renders from this array whenever it changes.
+// entries). The viewer shows one item at a time; arrows scroll through.
 const inventory = [];
-let selectedInventoryIndex = -1;
-const inventoryOverlay = document.getElementById('inventory-overlay');
-const inventoryGrid    = document.getElementById('inventory-grid');
-const inventoryDetail  = document.getElementById('inventory-detail');
-const toastEl          = document.getElementById('toast');
-const INVENTORY_SLOTS  = 12; // visual grid slots (rows × cols defined in CSS)
+let inventoryIndex = 0;
 
-function renderInventory() {
-  inventoryGrid.innerHTML = '';
-  for (let i = 0; i < INVENTORY_SLOTS; i++) {
-    const slot = document.createElement('div');
-    slot.className = 'inv-slot';
-    const item = inventory[i];
-    if (item) {
-      slot.classList.add('filled');
-      if (i === selectedInventoryIndex) slot.classList.add('selected');
-      slot.innerHTML = item.iconUrl
-        ? `<img src="${item.iconUrl}" alt="" /><span class="slot-name">${item.name}</span>`
-        : `<div style="width:60%;height:50%;background:#${(item.color ?? 0xffffff).toString(16).padStart(6,'0')};margin-bottom:0.3rem;border:1px solid #000;"></div><span class="slot-name">${item.name}</span>`;
-      slot.addEventListener('click', () => { selectedInventoryIndex = i; renderInventory(); });
-    }
-    inventoryGrid.appendChild(slot);
+const inventoryOverlay = document.getElementById('inventory-overlay');
+const invNameEl        = document.getElementById('inv-item-name');
+const invDescEl        = document.getElementById('inv-item-description');
+const invCanvas        = document.getElementById('inv-preview-canvas');
+const invArrowL        = document.getElementById('inv-arrow-left');
+const invArrowR        = document.getElementById('inv-arrow-right');
+const toastEl          = document.getElementById('toast');
+
+// ----- 3D preview scene (separate from the main gallery scene) -----
+const invRenderer = new THREE.WebGLRenderer({ canvas: invCanvas, antialias: false, alpha: true });
+invRenderer.outputColorSpace = THREE.SRGBColorSpace;
+invRenderer.toneMapping       = THREE.ACESFilmicToneMapping;
+invRenderer.toneMappingExposure = 1.0;
+
+const invScene = new THREE.Scene();
+invScene.environment = scene.environment; // share IBL with the main scene
+
+const invCamera = new THREE.PerspectiveCamera(45, 1, 0.05, 100);
+invCamera.position.set(0, 0.25, 1.8);
+invCamera.lookAt(0, 0, 0);
+
+invScene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.7));
+const invDirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+invDirLight.position.set(2, 3, 2);
+invScene.add(invDirLight);
+
+// Pivot that holds whatever item is currently being previewed. We rotate
+// + bob the pivot itself, so swapping the model in/out keeps the motion.
+const invPivot = new THREE.Group();
+invScene.add(invPivot);
+
+// Cache loaded models by URL so cycling through items doesn't re-download.
+const invModelCache = new Map();
+
+function loadModelCached(url) {
+  if (invModelCache.has(url)) {
+    return Promise.resolve(invModelCache.get(url).clone(true));
   }
-  // Detail panel
-  const sel = inventory[selectedInventoryIndex];
-  if (sel) {
-    inventoryDetail.innerHTML = `<h3>${sel.name}</h3><p>${sel.description}</p>`;
-  } else {
-    inventoryDetail.innerHTML = `<p class="hint">Select an item to view its description.</p>`;
-  }
+  return new Promise((resolve) => {
+    gltfLoader.load(
+      url,
+      (gltf) => { invModelCache.set(url, gltf.scene); resolve(gltf.scene.clone(true)); },
+      undefined,
+      () => resolve(null)
+    );
+  });
 }
 
+function clearInvPivot() {
+  while (invPivot.children.length) invPivot.remove(invPivot.children[0]);
+}
+
+async function setPreviewItem(item) {
+  clearInvPivot();
+  if (!item) return;
+
+  let model = null;
+  if (item.modelUrl) model = await loadModelCached(item.modelUrl);
+
+  if (!model) {
+    // Fallback: glowing cube using the item's color, mirroring the
+    // placeholder the collectible uses in-world.
+    const cube = new THREE.Mesh(
+      new THREE.BoxGeometry(0.45, 0.3, 0.18),
+      new THREE.MeshStandardMaterial({
+        color: item.color ?? 0xffffff,
+        emissive: item.color ?? 0xffaa00,
+        emissiveIntensity: 0.3,
+        roughness: 0.5,
+      })
+    );
+    invPivot.add(cube);
+    return;
+  }
+
+  // Auto-fit: center the model's bounding box at the wrapper origin and
+  // scale it down to fit in a ~0.8-unit cube so every item reads at a
+  // consistent size in the preview regardless of its world scale.
+  const box = new THREE.Box3().setFromObject(model);
+  const size   = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  const fitScale = 0.8 / maxDim;
+
+  model.position.sub(center);          // center on bounds before scaling
+  model.traverse(node => {
+    if (node.isMesh) ps1MeshMaterials(node);
+  });
+
+  const wrapper = new THREE.Group();
+  wrapper.scale.setScalar(fitScale);
+  wrapper.add(model);
+  invPivot.add(wrapper);
+}
+
+function showInventoryItem(index) {
+  if (inventory.length === 0) {
+    inventoryIndex = 0;
+    invNameEl.textContent = '— Empty —';
+    invDescEl.innerHTML = '<p class="hint">Walk up to a glowing item and press E to pick it up.</p>';
+    if (invArrowL) invArrowL.disabled = true;
+    if (invArrowR) invArrowR.disabled = true;
+    clearInvPivot();
+    return;
+  }
+  // Wrap around so left at index 0 jumps to the last item, etc.
+  inventoryIndex = ((index % inventory.length) + inventory.length) % inventory.length;
+  const item = inventory[inventoryIndex];
+  invNameEl.textContent = item.name;
+  invDescEl.innerHTML = `<p>${item.description}</p>`;
+  // Only one item → arrows have nothing to do.
+  const single = inventory.length <= 1;
+  if (invArrowL) invArrowL.disabled = single;
+  if (invArrowR) invArrowR.disabled = single;
+  setPreviewItem(item);
+}
+
+function nextInventoryItem() { showInventoryItem(inventoryIndex + 1); }
+function prevInventoryItem() { showInventoryItem(inventoryIndex - 1); }
+
+if (invArrowL) invArrowL.addEventListener('click', prevInventoryItem);
+if (invArrowR) invArrowR.addEventListener('click', nextInventoryItem);
+
+function resizeInvRenderer() {
+  const w = invCanvas.clientWidth;
+  const h = invCanvas.clientHeight;
+  if (w > 0 && h > 0) {
+    invRenderer.setSize(w, h, false);
+    invCamera.aspect = w / h;
+    invCamera.updateProjectionMatrix();
+  }
+}
+window.addEventListener('resize', resizeInvRenderer);
+
 function showInventory() {
-  renderInventory();
   inventoryOverlay.classList.remove('hidden');
   if (controls.isLocked) controls.unlock();
+  inventoryIndex = 0;
+  showInventoryItem(0);
+  // Defer one frame so the overlay has been laid out and the canvas
+  // reports its actual rendered size.
+  requestAnimationFrame(resizeInvRenderer);
 }
 function hideInventory() {
   inventoryOverlay.classList.add('hidden');
@@ -1060,7 +1188,7 @@ function toggleInventory() {
   if (inventoryOverlay.classList.contains('hidden')) showInventory();
   else hideInventory();
 }
-renderInventory(); // initial empty grid
+showInventoryItem(0); // initial empty state
 
 function showToast(message, duration = 1800) {
   toastEl.textContent = message;
@@ -1077,6 +1205,8 @@ function pickupCollectible(obj) {
     description: data.description,
     iconUrl: data.iconUrl,
     color: data.color,
+    modelUrl: data.modelUrl,
+    modelScale: data.modelScale,
   });
   // Remove from world
   if (obj.parent) obj.parent.remove(obj);
@@ -1086,7 +1216,11 @@ function pickupCollectible(obj) {
   promptEl.classList.add('hidden');
 
   showToast(`Picked up: ${data.name}`);
-  renderInventory();
+  // If the inventory is open while picking up (rare, but possible on
+  // mobile), refresh the viewer so the new item is reflected.
+  if (!inventoryOverlay.classList.contains('hidden')) {
+    showInventoryItem(inventoryIndex);
+  }
 }
 
 // E = pure context interact. Inventory is now bound to I exclusively.
@@ -1493,6 +1627,16 @@ function animate() {
   });
 
   renderer.render(scene, camera);
+
+  // Inventory preview — only render when the overlay is visible so we
+  // don't pay for an extra scene when the user isn't looking at it.
+  // The pivot rotates + bobs to match the world-space collectible's
+  // motion (rotates at 0.4 rad/sec, sin(t)·0.06 bob with t = ms·0.002).
+  if (!inventoryOverlay.classList.contains('hidden')) {
+    invPivot.rotation.y += dt * 0.4;
+    invPivot.position.y  = Math.sin(t) * 0.06;
+    invRenderer.render(invScene, invCamera);
+  }
 }
 animate();
 
